@@ -2,11 +2,9 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { Spinner, Avatar, Icon, Modal, Toast } from '../components/ui'
-import { fmtDate } from '../lib/utils'
+import { fmtDate, validateBirthDate } from '../lib/utils'
 
 function GuestForm({ initial, onSave, onClose }) {
-  // BUG FIX: null fields from DB would make controlled inputs uncontrolled.
-  // Always normalize null → '' for text inputs.
   const blank = { name: '', email: '', phone: '', address: '', birth_date: '', notes: '' }
   const normalize = (obj) => obj ? {
     ...blank, ...obj,
@@ -18,11 +16,28 @@ function GuestForm({ initial, onSave, onClose }) {
   } : blank
   const [form, setForm] = useState(normalize(initial))
   const [saving, setSaving] = useState(false)
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const [errors, setErrors] = useState({})
+  const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); setErrors(e => ({ ...e, [k]: null })) }
+
+  const validate = () => {
+    const errs = {}
+    if (!form.name.trim()) errs.name = 'Name ist erforderlich.'
+    const bdErr = validateBirthDate(form.birth_date)
+    if (bdErr) errs.birth_date = bdErr
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = 'Ungültige E-Mail-Adresse'
+    return errs
+  }
+
   const handle = async () => {
-    if (!form.name) { alert('Name ist erforderlich.'); return }
+    const errs = validate()
+    if (Object.keys(errs).length > 0) { setErrors(errs); return }
     setSaving(true); await onSave(form); setSaving(false)
   }
+
+  // Maximales Geburtsdatum = heute (kein zukünftiges Datum)
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const minBirth = new Date(); minBirth.setFullYear(minBirth.getFullYear() - 120)
+  const minBirthStr = minBirth.toISOString().slice(0, 10)
 
   return (
     <Modal
@@ -38,11 +53,24 @@ function GuestForm({ initial, onSave, onClose }) {
       <div className="form-row">
         <div className="form-group">
           <label className="form-label">Name <span className="req">*</span></label>
-          <input className="form-input" value={form.name} onChange={e => set('name', e.target.value)} placeholder="Max Mustermann" />
+          <input
+            className={`form-input ${errors.name ? 'input-error' : ''}`}
+            value={form.name}
+            onChange={e => set('name', e.target.value)}
+            placeholder="Max Mustermann"
+          />
+          {errors.name && <div className="field-error">{errors.name}</div>}
         </div>
         <div className="form-group">
           <label className="form-label">E-Mail</label>
-          <input className="form-input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="max@email.de" />
+          <input
+            className={`form-input ${errors.email ? 'input-error' : ''}`}
+            type="email"
+            value={form.email}
+            onChange={e => set('email', e.target.value)}
+            placeholder="max@email.de"
+          />
+          {errors.email && <div className="field-error">{errors.email}</div>}
         </div>
       </div>
       <div className="form-row">
@@ -52,7 +80,15 @@ function GuestForm({ initial, onSave, onClose }) {
         </div>
         <div className="form-group">
           <label className="form-label">Geburtsdatum</label>
-          <input className="form-input" type="date" value={form.birth_date} onChange={e => set('birth_date', e.target.value)} />
+          <input
+            className={`form-input ${errors.birth_date ? 'input-error' : ''}`}
+            type="date"
+            value={form.birth_date}
+            max={todayStr}
+            min={minBirthStr}
+            onChange={e => set('birth_date', e.target.value)}
+          />
+          {errors.birth_date && <div className="field-error">{errors.birth_date}</div>}
         </div>
       </div>
       <div className="form-group">
