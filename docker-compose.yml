@@ -1,0 +1,39 @@
+version: "3.9"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CampCloud — Docker Compose
+#
+# Für lokale Entwicklung:   docker compose up dev
+# Für lokalen Prod-Test:    docker compose up prod
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ─── Entwicklungsserver (Hot Reload) ─────────────────────────────────────────
+  dev:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+      - /app/node_modules          # node_modules im Container lassen
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    env_file:
+      - .env
+
+  # ─── Produktions-Build (nginx) ────────────────────────────────────────────────
+  prod:
+    build:
+      context: .
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    ports:
+      - "80:80"
+    env_file:
+      - .env
+    restart: unless-stopped
