@@ -40,18 +40,13 @@ export const Icon = ({ name, size = 16 }) => {
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
-// msg kann String oder { text, type: 'error'|'success' } sein
-export const Toast = ({ msg }) => {
-  if (!msg) return null
-  const isErr  = typeof msg === 'object' ? msg.type === 'error' : msg.startsWith('⛔') || msg.startsWith('Fehler')
-  const text   = typeof msg === 'object' ? msg.text : msg
-  return (
-    <div className="toast" style={isErr ? { background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA' } : {}}>
-      {isErr ? <Icon name="x" size={15} /> : <Icon name="check" size={15} />}
-      {text}
+export const Toast = ({ msg }) =>
+  msg ? (
+    <div className="toast">
+      <Icon name="check" size={15} />
+      {msg}
     </div>
-  )
-}
+  ) : null
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 export const Avatar = ({ name, size = 34 }) => {

@@ -248,13 +248,9 @@ export default function CampMap({
 
   useEffect(() => { loadSymbols(); loadAreas() }, [loadSymbols, loadAreas])
 
-  const getPos = useCallback(
-    (site) => localPos[site.id] ?? { x: site.x_pos, y: site.y_pos },
-    [localPos]
-  )
+  const getPos = (site) => localPos[site.id] ?? { x: site.x_pos, y: site.y_pos }
 
-  // Timestamp des letzten Klicks, um dblclick-Doppelpunkt zu verhindern
-  const lastClickTime = useRef(0)
+  // ── Hilfsfunktion: Client → % Koordinaten ─────────────────────────────────
   const clientToPercent = (clientX, clientY) => {
     const rect = containerRef.current.getBoundingClientRect()
     return {
@@ -335,12 +331,6 @@ export default function CampMap({
   const onMapClick = useCallback(async (e) => {
     if (!editMode) { setPopup(null); return }
     if (dragging) return
-    // Doppelklick-Schutz: onClick feuert auch bei dblclick — ignorieren
-    // wenn der letzte Klick weniger als 300ms her ist (= dblclick)
-    const now = Date.now()
-    if (now - lastClickTime.current < 300) return
-    lastClickTime.current = now
-
     const p = clientToPercent(e.clientX, e.clientY)
 
     if (mode === 'symbols' && selectedSymbol) {
@@ -356,8 +346,10 @@ export default function CampMap({
 
     } else if (mode === 'draw') {
       if (drawing) {
+        // Punkt hinzufügen
         setCurrentPoly(pts => [...pts, p])
       } else {
+        // Neues Polygon starten
         setDrawing(true)
         setCurrentPoly([p])
       }
@@ -370,7 +362,6 @@ export default function CampMap({
   // Doppelklick → Polygon schließen & speichern
   const onMapDblClick = useCallback(async (e) => {
     e.preventDefault()
-    lastClickTime.current = Date.now() // markiere, damit der onClick-Nachläufer ignoriert wird
     if (!drawing || currentPoly.length < 3) {
       setDrawing(false); setCurrentPoly([]); return
     }

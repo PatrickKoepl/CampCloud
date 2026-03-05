@@ -3,62 +3,25 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { Spinner, Avatar, Icon, Modal, Toast } from '../components/ui'
-import { fmt, fmtDate, nights, STATUS, PAYMENT, validateBookingDates } from '../lib/utils'
+import { fmt, fmtDate, nights, STATUS, PAYMENT } from '../lib/utils'
 import InvoiceModal, { DunningModal } from '../components/Invoice'
 
 // ─── Form ─────────────────────────────────────────────────────────────────────
 function BookingForm({ initial, sites, onSave, onClose }) {
-  const blank = {
-    guest_name: '', email: '', site_id: '', site_name: '',
-    type: 'Stellplatz', arrival: '', departure: '',
-    persons: 2, status: 'confirmed', payment: 'pending', total: 0, notes: '',
-  }
+  const blank = { guest_name: '', email: '', site_name: '', type: 'Stellplatz', arrival: '', departure: '', persons: 2, status: 'confirmed', payment: 'pending', total: 0, notes: '' }
   const [form, setForm] = useState(initial || blank)
   const [saving, setSaving] = useState(false)
-  const [errors, setErrors] = useState({})
-  const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); setErrors(e => ({ ...e, [k]: null })) }
-
-  // Wenn Stellplatz gewählt wird, site_id + site_name + type synchronisieren
-  const onSiteChange = (siteId) => {
-    const site = sites.find(s => s.id === siteId)
-    setForm(f => ({
-      ...f,
-      site_id:   siteId,
-      site_name: site?.name || '',
-      type:      site?.type || f.type,
-    }))
-    setErrors(e => ({ ...e, site_id: null }))
-  }
-
-  const validate = () => {
-    const errs = {}
-    if (!form.guest_name.trim()) errs.guest_name = 'Pflichtfeld'
-    if (!form.site_id && !form.site_name) errs.site_id = 'Bitte Stellplatz wählen'
-    const dateErr = validateBookingDates(form.arrival, form.departure)
-    if (dateErr) errs.dates = dateErr
-    if (form.persons < 1 || form.persons > 100) errs.persons = 'Bitte gültige Personenzahl eingeben (1–100)'
-    if (form.total < 0) errs.total = 'Betrag darf nicht negativ sein'
-    return errs
-  }
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handle = async () => {
-    const errs = validate()
-    if (Object.keys(errs).length > 0) { setErrors(errs); return }
+    if (!form.guest_name || !form.arrival || !form.departure || !form.site_name) {
+      alert('Bitte alle Pflichtfelder ausfüllen.')
+      return
+    }
     setSaving(true)
     await onSave(form)
     setSaving(false)
   }
-
-  const nightCount = nights(form.arrival, form.departure)
-
-  // Beim Öffnen: site_id aus bestehender Buchung rückwärts ermitteln
-  useEffect(() => {
-    if (initial?.site_id) return  // bereits gesetzt
-    if (initial?.site_name && sites.length > 0) {
-      const match = sites.find(s => s.name === initial.site_name)
-      if (match) setForm(f => ({ ...f, site_id: match.id }))
-    }
-  }, [initial, sites]) // eslint-disable-line
 
   return (
     <Modal
@@ -74,13 +37,7 @@ function BookingForm({ initial, sites, onSave, onClose }) {
       <div className="form-row">
         <div className="form-group">
           <label className="form-label">Gastname <span className="req">*</span></label>
-          <input
-            className={`form-input ${errors.guest_name ? 'input-error' : ''}`}
-            value={form.guest_name}
-            onChange={e => set('guest_name', e.target.value)}
-            placeholder="Max Mustermann"
-          />
-          {errors.guest_name && <div className="field-error">{errors.guest_name}</div>}
+          <input className="form-input" value={form.guest_name} onChange={e => set('guest_name', e.target.value)} placeholder="Max Mustermann" />
         </div>
         <div className="form-group">
           <label className="form-label">E-Mail</label>
@@ -90,75 +47,38 @@ function BookingForm({ initial, sites, onSave, onClose }) {
       <div className="form-row">
         <div className="form-group">
           <label className="form-label">Stellplatz <span className="req">*</span></label>
-          <select
-            className={`form-select ${errors.site_id ? 'input-error' : ''}`}
-            value={form.site_id || ''}
-            onChange={e => onSiteChange(e.target.value)}
-          >
+          <select className="form-select" value={form.site_name} onChange={e => set('site_name', e.target.value)}>
             <option value="">Stellplatz wählen…</option>
-            {sites.map(s => <option key={s.id} value={s.id}>{s.name} ({s.type})</option>)}
+            {sites.map(s => <option key={s.id} value={s.name}>{s.name} ({s.type})</option>)}
           </select>
-          {errors.site_id && <div className="field-error">{errors.site_id}</div>}
         </div>
         <div className="form-group">
           <label className="form-label">Typ</label>
           <select className="form-select" value={form.type} onChange={e => set('type', e.target.value)}>
-            <option>Stellplatz</option><option>Mietunterkunft</option><option>Dauercamping</option>
+            <option>Stellplatz</option>
+            <option>Mietunterkunft</option>
+            <option>Dauercamping</option>
           </select>
         </div>
       </div>
-
-      {/* Datum */}
       <div className="form-row">
         <div className="form-group">
           <label className="form-label">Anreise <span className="req">*</span></label>
-          <input
-            className={`form-input ${errors.dates ? 'input-error' : ''}`}
-            type="date"
-            value={form.arrival}
-            onChange={e => set('arrival', e.target.value)}
-          />
+          <input className="form-input" type="date" value={form.arrival} onChange={e => set('arrival', e.target.value)} />
         </div>
         <div className="form-group">
           <label className="form-label">Abreise <span className="req">*</span></label>
-          <input
-            className={`form-input ${errors.dates ? 'input-error' : ''}`}
-            type="date"
-            value={form.departure}
-            min={form.arrival || undefined}
-            onChange={e => set('departure', e.target.value)}
-          />
+          <input className="form-input" type="date" value={form.departure} onChange={e => set('departure', e.target.value)} />
         </div>
       </div>
-      {errors.dates && (
-        <div className="field-error" style={{ marginTop: -8, marginBottom: 8 }}>⚠️ {errors.dates}</div>
-      )}
-      {nightCount > 0 && !errors.dates && (
-        <div style={{ fontSize: 12, color: 'var(--green-700)', marginTop: -8, marginBottom: 10, fontWeight: 500 }}>
-          ✓ {nightCount} Nacht{nightCount !== 1 ? 'e' : ''}
-        </div>
-      )}
-
       <div className="form-row">
         <div className="form-group">
           <label className="form-label">Personen</label>
-          <input
-            className={`form-input ${errors.persons ? 'input-error' : ''}`}
-            type="number" min="1" max="100"
-            value={form.persons}
-            onChange={e => set('persons', Math.max(1, +e.target.value))}
-          />
-          {errors.persons && <div className="field-error">{errors.persons}</div>}
+          <input className="form-input" type="number" min="1" max="30" value={form.persons} onChange={e => set('persons', +e.target.value)} />
         </div>
         <div className="form-group">
           <label className="form-label">Gesamtbetrag (€)</label>
-          <input
-            className={`form-input ${errors.total ? 'input-error' : ''}`}
-            type="number" min="0" step="0.01"
-            value={form.total}
-            onChange={e => set('total', Math.max(0, +e.target.value))}
-          />
-          {errors.total && <div className="field-error">{errors.total}</div>}
+          <input className="form-input" type="number" min="0" step="0.01" value={form.total} onChange={e => set('total', +e.target.value)} />
         </div>
       </div>
       <div className="form-row">
@@ -288,7 +208,6 @@ function BookingDetail({ booking, campground, onEdit, onDelete, onClose }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function Bookings() {
   const { campground } = useAuth()
-  const navigate = useNavigate()
   const { id: detailId } = useParams()
 
   const [bookings, setBookings] = useState([])
