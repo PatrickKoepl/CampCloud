@@ -453,7 +453,8 @@ export default function CampMap({
     draw: mode === 'draw' && editMode
       ? drawing
         ? `Klicke Punkte · Doppelklick = Fläche abschließen · Esc = Abbrechen (${currentPoly.length} Punkte)`
-        : '← Flächentyp wählen · Klicke auf Karte um zu beginnen',
+        : '← Flächentyp wählen · Klicke auf Karte um zu beginnen'
+      : null,
   }
 
   return (
