@@ -29,8 +29,8 @@ Supabase stellt die Datenbank und Authentifizierung bereit — kostenlos bis 500
 3. Warten bis Projekt bereit ist (~2 Min.)
 4. **SQL Editor** → **"New query"** → Inhalt von `supabase/schema.sql` einfügen → **"Run"**
 5. **Project Settings → API** → diese zwei Werte kopieren:
-   - `Project URL` → wird zu `VITE_SUPABASE_URL`     https://joaalmeubprutkvxslbi.supabase.co         
-   - `anon public` Key → wird zu `VITE_SUPABASE_ANON_KEY`     eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvYWFsbWV1YnBydXRrdnhzbGJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MjE4NTIsImV4cCI6MjA4ODI5Nzg1Mn0.yAgNycqqzKTjY0YEgQPB85yf9vMVB886FW9blByP1Xo
+   - `Project URL` → wird zu `VITE_SUPABASE_URL`
+   - `anon public` Key → wird zu `VITE_SUPABASE_ANON_KEY`
 
 ---
 
