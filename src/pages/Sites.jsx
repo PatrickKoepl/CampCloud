@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { Spinner, Icon, Modal, Toast } from '../components/ui'
 import CampMap from '../components/CampMap'
-
 // ─── Formular ─────────────────────────────────────────────────────────────────
 function SiteForm({ initial, onSave, onClose }) {
   const blank = { name: '', area: 'A', type: 'Stellplatz', size: '', electric: true, water: true, status: 'free', notes: '' }
@@ -82,7 +81,7 @@ function SiteForm({ initial, onSave, onClose }) {
 
 // ─── Hauptseite ───────────────────────────────────────────────────────────────
 export default function Sites() {
-  const { campground, refreshCampground } = useAuth()
+  const { campground, user, refreshCampground } = useAuth()
   const [sites, setSites]       = useState([])
   const [loading, setLoading]   = useState(true)
   const [viewMode, setViewMode] = useState('plan')   // 'plan' | 'grid' | 'list'
@@ -148,9 +147,11 @@ export default function Sites() {
     await setStatus(site, cycle[site.status])
   }
 
-  // Marker-Position speichern (aus CampMap)
+  // Marker-Position speichern — null = von Karte entfernen
   const savePosition = useCallback(async (id, x, y) => {
-    const { error } = await supabase.from('sites').update({ x_pos: x, y_pos: y }).eq('id', id)
+    const { error } = await supabase.from('sites')
+      .update({ x_pos: x ?? null, y_pos: y ?? null })
+      .eq('id', id)
     if (!error) await load()
     else toast$('Fehler beim Speichern: ' + error.message)
   }, [load])
@@ -221,8 +222,10 @@ export default function Sites() {
           <CampMap
             sites={sites}
             campground={campground}
+            userId={user?.id}
             onStatusChange={setStatus}
             onEdit={s => setEditing(s)}
+            onDelete={del}
             onPositionSave={savePosition}
             onBgSave={saveBg}
           />

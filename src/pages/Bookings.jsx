@@ -208,19 +208,66 @@ export default function Bookings() {
 
   useEffect(() => { load() }, [load])
 
+  // Gast automatisch anlegen oder verknüpfen
+  const resolveGuest = async (guestName, email) => {
+    if (!guestName) return null
+    // Erst nach bestehendem Gast suchen (E-Mail oder Name)
+    let existing = null
+    if (email) {
+      const { data } = await supabase.from('guests')
+        .select('id, visits')
+        .eq('campground_id', campground.id)
+        .eq('email', email)
+        .maybeSingle()
+      existing = data
+    }
+    if (!existing) {
+      const { data } = await supabase.from('guests')
+        .select('id, visits')
+        .eq('campground_id', campground.id)
+        .ilike('name', guestName.trim())
+        .maybeSingle()
+      existing = data
+    }
+
+    if (existing) {
+      // Besuchszähler erhöhen + letzten Besuch aktualisieren
+      await supabase.from('guests').update({
+        visits:     (existing.visits || 0) + 1,
+        last_visit: new Date().toISOString().slice(0, 10),
+        ...(email ? { email } : {}),
+      }).eq('id', existing.id)
+      return existing.id
+    } else {
+      // Neuen Gast anlegen
+      const { data } = await supabase.from('guests').insert({
+        campground_id: campground.id,
+        name:       guestName.trim(),
+        email:      email || null,
+        visits:     1,
+        last_visit: new Date().toISOString().slice(0, 10),
+      }).select('id').single()
+      return data?.id ?? null
+    }
+  }
+
   const save = async (form) => {
-    const payload = { ...form, campground_id: campground.id }
+    // Gast automatisch verknüpfen (nur bei neuer Buchung oder wenn kein Gast gesetzt)
+    let guest_id = form.guest_id || null
+    if (!form.id || !guest_id) {
+      guest_id = await resolveGuest(form.guest_name, form.email)
+    }
+
+    const payload = { ...form, campground_id: campground.id, guest_id }
     let error
     if (form.id) {
-      // BUG FIX: explicitly exclude read-only DB columns from update payload
       const { id: _id, campground_id: _cid, created_at: _cat, ...rest } = payload
       ;({ error } = await supabase.from('bookings').update(rest).eq('id', form.id))
       if (!error) toast$('Buchung gespeichert')
     } else {
-      // BUG FIX: exclude any stale `id` field that might exist on the form object
       const { id: _id, ...rest } = payload
       ;({ error } = await supabase.from('bookings').insert(rest))
-      if (!error) toast$('Buchung angelegt')
+      if (!error) toast$('Buchung angelegt — Gast automatisch ' + (guest_id ? 'verknüpft' : 'angelegt'))
     }
     if (error) { toast$('Fehler: ' + error.message); return }
     setShowForm(false); setEditing(null)
