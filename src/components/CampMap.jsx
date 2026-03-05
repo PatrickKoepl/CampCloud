@@ -577,7 +577,7 @@ export default function CampMap({
                   <input
                     className="form-input"
                     style={{ flex: 1, maxWidth: 240, fontSize: 12, padding: '5px 10px' }}
-                    placeholder="Optionale Beschriftung (z.B. „Hauptwiese")"
+                    placeholder="Optionale Beschriftung (z.B. Hauptwiese)"
                     value={areaLabel}
                     onChange={e => setAreaLabel(e.target.value)}
                   />
