@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { Spinner, Icon, Modal, Toast } from '../components/ui'
 import { fmt } from '../lib/utils'
+import { DEFAULT_PRICES } from '../lib/defaultPrices'
 
 function PriceForm({ initial, onSave, onClose }) {
   const blank = { name: '', type: 'Stellplatz', base_price: 0, per_person: 0, electricity: 0, active: true }
@@ -122,6 +123,15 @@ export default function Pricing() {
     await load()
   }
 
+  const importDefaults = async () => {
+    if (!confirm('Standardpreise importieren? Bestehende Preislisten bleiben erhalten.')) return
+    const rows = DEFAULT_PRICES.map(p => ({ ...p, campground_id: campground.id }))
+    const { error } = await supabase.from('price_lists').insert(rows)
+    if (error) { toast$('Fehler: ' + error.message); return }
+    toast$('Standardpreise importiert ✓')
+    await load()
+  }
+
   if (loading) return <div className="page" style={{ paddingTop: 60 }}><Spinner /></div>
 
   return (
@@ -132,6 +142,9 @@ export default function Pricing() {
           <div className="page-subtitle">Konfiguriere Preise für jeden Stellplatztyp und jede Saison</div>
         </div>
         <div className="page-actions">
+          <button className="btn btn-secondary" onClick={importDefaults}>
+            ⬇️ Standardpreise laden
+          </button>
           <button className="btn btn-primary" onClick={() => setShowForm(true)}>
             <Icon name="plus" /> Neue Preisliste
           </button>

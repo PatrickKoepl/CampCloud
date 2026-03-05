@@ -8,6 +8,27 @@ const STATUS_COLOR = {
   blocked:  { bg: '#9CA3AF', border: '#6B7280', text: '#fff', label: 'Gesperrt' },
 }
 
+// ─── Kartensymbole ────────────────────────────────────────────────────────────
+const SYMBOLS = [
+  { type: 'tree',        emoji: '🌲', label: 'Baum' },
+  { type: 'shower',      emoji: '🚿', label: 'Dusche' },
+  { type: 'toilet',      emoji: '🚽', label: 'Toilette' },
+  { type: 'parking',     emoji: '🅿️', label: 'Parkplatz' },
+  { type: 'reception',   emoji: '🏠', label: 'Rezeption' },
+  { type: 'shop',        emoji: '🏪', label: 'Kiosk/Shop' },
+  { type: 'power',       emoji: '⚡', label: 'Stromanschluss' },
+  { type: 'water',       emoji: '💧', label: 'Wasseranschluss' },
+  { type: 'fire',        emoji: '🔥', label: 'Feuerstelle' },
+  { type: 'playground',  emoji: '🛝', label: 'Spielplatz' },
+  { type: 'trash',       emoji: '🗑️', label: 'Müll' },
+  { type: 'road',        emoji: '🛤️', label: 'Zufahrt' },
+  { type: 'tent_area',   emoji: '⛺', label: 'Zeltbereich' },
+  { type: 'pool',        emoji: '🏊', label: 'Pool/See' },
+  { type: 'dog',         emoji: '🐕', label: 'Hundewiese' },
+  { type: 'wash',        emoji: '🧺', label: 'Waschmaschine' },
+]
+const SYMBOL_MAP = Object.fromEntries(SYMBOLS.map(s => [s.type, s]))
+
 // ─── Marker-Popup ─────────────────────────────────────────────────────────────
 function SitePopup({ site, pos, editMode, onClose, onStatusChange, onEdit, onDelete, onRemoveFromMap }) {
   // Popup rechts oder links vom Marker, je nach Position
@@ -87,17 +108,35 @@ function SitePopup({ site, pos, editMode, onClose, onStatusChange, onEdit, onDel
 export default function CampMap({ sites, campground, onStatusChange, onEdit, onDelete, onPositionSave, onBgSave, userId }) {
   const containerRef  = useRef(null)
   const fileInputRef  = useRef(null)
-  const [editMode, setEditMode]     = useState(false)
-  const [popup, setPopup]           = useState(null)
-  const [dragging, setDragging]     = useState(null)
-  const [localPos, setLocalPos]     = useState({})
-  const [uploading, setUploading]   = useState(false)
-  const [saving, setSaving]         = useState(false)
-  const [unplaced, setUnplaced]     = useState([])
+  const [editMode, setEditMode]       = useState(false)
+  const [mode, setMode]               = useState('sites')   // 'sites' | 'symbols'
+  const [selectedSymbol, setSelectedSymbol] = useState(null) // type string
+  const [mapSymbols, setMapSymbols]   = useState([])
+  const [popup, setPopup]             = useState(null)
+  const [dragging, setDragging]       = useState(null)
+  const [localPos, setLocalPos]       = useState({})
+  const [uploading, setUploading]     = useState(false)
+  const [saving, setSaving]           = useState(false)
+  const [unplaced, setUnplaced]       = useState([])
 
   useEffect(() => {
     setUnplaced(sites.filter(s => s.x_pos == null || s.y_pos == null))
   }, [sites])
+
+  // Symbole laden
+  useEffect(() => {
+    if (!campground) return
+    supabase.from('map_symbols')
+      .select('*')
+      .eq('campground_id', campground.id)
+      .then(({ data }) => setMapSymbols(data || []))
+  }, [campground])
+
+  const loadSymbols = useCallback(async () => {
+    if (!campground) return
+    const { data } = await supabase.from('map_symbols').select('*').eq('campground_id', campground.id)
+    setMapSymbols(data || [])
+  }, [campground])
 
   const getPos = (site) => localPos[site.id] ?? { x: site.x_pos, y: site.y_pos }
 
@@ -170,15 +209,29 @@ export default function CampMap({ sites, campground, onStatusChange, onEdit, onD
     setDragging(null)
   }, [dragging, localPos, onPositionSave])
 
-  // Klick auf Karte → nächsten nicht platzierten Stellplatz ablegen
-  const onMapClick = useCallback((e) => {
+  // Klick auf Karte
+  const onMapClick = useCallback(async (e) => {
     if (!editMode) { setPopup(null); return }
-    if (dragging || unplaced.length === 0) return
+    if (dragging) return
     const rect = containerRef.current.getBoundingClientRect()
     const x = ((e.clientX - rect.left) / rect.width) * 100
     const y = ((e.clientY - rect.top)  / rect.height) * 100
-    onPositionSave(unplaced[0].id, x, y)
-  }, [editMode, dragging, unplaced, onPositionSave])
+
+    if (mode === 'symbols' && selectedSymbol) {
+      // Symbol an dieser Stelle ablegen
+      setSaving(true)
+      await supabase.from('map_symbols').insert({
+        campground_id: campground.id,
+        symbol_type: selectedSymbol,
+        x_pos: x, y_pos: y,
+        label: SYMBOL_MAP[selectedSymbol]?.label || '',
+      })
+      await loadSymbols()
+      setSaving(false)
+    } else if (mode === 'sites' && unplaced.length > 0) {
+      onPositionSave(unplaced[0].id, x, y)
+    }
+  }, [editMode, dragging, mode, selectedSymbol, unplaced, campground, loadSymbols, onPositionSave])
 
   // Klick auf Marker → Popup
   const onMarkerClick = useCallback((e, site) => {
@@ -203,6 +256,12 @@ export default function CampMap({ sites, campground, onStatusChange, onEdit, onD
     onDelete(site.id)
   }, [onDelete])
 
+  // Symbol löschen
+  const deleteSymbol = useCallback(async (id) => {
+    await supabase.from('map_symbols').delete().eq('id', id)
+    await loadSymbols()
+  }, [loadSymbols])
+
   const bgUrl  = campground?.map_bg_url
   const placed = sites.filter(s => s.x_pos != null && s.y_pos != null)
 
@@ -224,43 +283,91 @@ export default function CampMap({ sites, campground, onStatusChange, onEdit, onD
               <span style={{ color: 'var(--text-muted)' }}>{c.label}</span>
             </div>
           ))}
-          {saving && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Speichern…</span>}
-          {uploading && <span style={{ fontSize: 12, color: 'var(--green-700)', fontWeight: 500 }}>⬆️ Bild wird hochgeladen…</span>}
-          {editMode && unplaced.length > 0 && (
+          {(saving || uploading) && (
+            <span style={{ fontSize: 12, color: 'var(--green-700)', fontWeight: 500 }}>
+              {uploading ? '⬆️ Bild wird hochgeladen…' : 'Speichern…'}
+            </span>
+          )}
+          {editMode && mode === 'sites' && unplaced.length > 0 && (
             <span style={{ fontSize: 12, color: '#92400E', fontWeight: 500 }}>
               📍 Klicke auf die Karte → „{unplaced[0].name}" platzieren
             </span>
           )}
+          {editMode && mode === 'symbols' && selectedSymbol && (
+            <span style={{ fontSize: 12, color: '#1D4ED8', fontWeight: 500 }}>
+              {SYMBOL_MAP[selectedSymbol]?.emoji} Klicke auf die Karte um „{SYMBOL_MAP[selectedSymbol]?.label}" zu platzieren
+            </span>
+          )}
         </div>
 
-        {/* Buttons */}
+        {/* Rechte Buttons */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {/* Verstecktes File-Input */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/jpg,image/png,image/webp"
-            style={{ display: 'none' }}
-            onChange={handleFileUpload}
-          />
+          <input ref={fileInputRef} type="file" accept="image/jpeg,image/jpg,image/png,image/webp"
+            style={{ display: 'none' }} onChange={handleFileUpload} />
           <button className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
             🖼️ {bgUrl ? 'Bild ersetzen' : 'Bild hochladen'}
           </button>
           {bgUrl && (
             <button className="btn btn-secondary btn-sm" onClick={removeBg} style={{ color: 'var(--red)' }}>
-              ✕ Bild entfernen
+              ✕ Entfernen
             </button>
           )}
           <button
             className={`btn btn-sm ${editMode ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => { setEditMode(e => !e); setPopup(null) }}
+            onClick={() => { setEditMode(e => !e); setPopup(null); setSelectedSymbol(null) }}
           >
-            {editMode
-              ? <><Icon name="check" size={13} /> Fertig</>
-              : <><Icon name="edit" size={13} /> Platzplan bearbeiten</>}
+            {editMode ? <><Icon name="check" size={13} /> Fertig</> : <><Icon name="edit" size={13} /> Bearbeiten</>}
           </button>
         </div>
       </div>
+
+      {/* ── Symbol-Palette (nur im Bearbeitungsmodus) ── */}
+      {editMode && (
+        <div style={{
+          borderBottom: '1px solid var(--border)',
+          background: '#F8FAFC', padding: '10px 18px',
+        }}>
+          {/* Modus-Tabs */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {[['sites', '📍 Stellplätze platzieren'], ['symbols', '🎨 Symbole & Icons zeichnen']].map(([m, label]) => (
+              <button key={m} onClick={() => { setMode(m); setSelectedSymbol(null) }}
+                style={{
+                  padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  border: `2px solid ${mode === m ? '#1B4332' : 'var(--border)'}`,
+                  background: mode === m ? '#1B4332' : '#fff',
+                  color: mode === m ? '#fff' : 'var(--text-muted)',
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Symbol-Auswahl */}
+          {mode === 'symbols' && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                Symbol auswählen → auf Karte klicken zum Platzieren:
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {SYMBOLS.map(s => (
+                  <button key={s.type} onClick={() => setSelectedSymbol(t => t === s.type ? null : s.type)}
+                    title={s.label}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center',
+                      padding: '6px 10px', borderRadius: 8, cursor: 'pointer',
+                      border: `2px solid ${selectedSymbol === s.type ? '#1D4ED8' : 'var(--border)'}`,
+                      background: selectedSymbol === s.type ? '#EFF6FF' : '#fff',
+                      fontSize: 20, lineHeight: 1.2, minWidth: 52,
+                    }}>
+                    {s.emoji}
+                    <span style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 3, textAlign: 'center', lineHeight: 1.1 }}>{s.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Kartenbereich ── */}
       <div style={{ display: 'flex', minHeight: 520 }}>
@@ -368,11 +475,44 @@ export default function CampMap({ sites, campground, onStatusChange, onEdit, onD
               padding: '6px 16px', borderRadius: 20, fontSize: 12, fontWeight: 500,
               pointerEvents: 'none', backdropFilter: 'blur(4px)', whiteSpace: 'nowrap',
             }}>
-              {unplaced.length > 0
-                ? `📍 Klick = „${unplaced[0].name}" platzieren · Marker ziehen = verschieben`
-                : '✓ Alle Stellplätze platziert · Marker ziehen zum Verschieben · Klicken zum Bearbeiten'}
+              {mode === 'symbols'
+                ? selectedSymbol
+                  ? `${SYMBOL_MAP[selectedSymbol]?.emoji} Klicke auf die Karte zum Platzieren · Rechtsklick auf Symbol = Löschen`
+                  : '← Symbol in der Palette auswählen'
+                : unplaced.length > 0
+                  ? `📍 Klick = „${unplaced[0].name}" platzieren · Marker ziehen = verschieben`
+                  : '✓ Alle Stellplätze platziert · Marker ziehen zum Verschieben · Klicken = Bearbeiten'}
             </div>
           )}
+
+          {/* Kartensymbole */}
+          {mapSymbols.map(sym => {
+            const def = SYMBOL_MAP[sym.symbol_type] || { emoji: '❓', label: sym.symbol_type }
+            return (
+              <div
+                key={sym.id}
+                onContextMenu={e => {
+                  e.preventDefault(); e.stopPropagation()
+                  if (editMode && confirm(`„${def.label}" entfernen?`)) deleteSymbol(sym.id)
+                }}
+                onClick={e => { e.stopPropagation() }}
+                style={{
+                  position: 'absolute',
+                  left: `${sym.x_pos}%`, top: `${sym.y_pos}%`,
+                  transform: 'translate(-50%,-50%)',
+                  fontSize: 24, lineHeight: 1,
+                  userSelect: 'none',
+                  cursor: editMode ? 'context-menu' : 'default',
+                  zIndex: 5,
+                  filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.4))',
+                  title: def.label,
+                }}
+                title={editMode ? `${def.label} — Rechtsklick zum Löschen` : def.label}
+              >
+                {def.emoji}
+              </div>
+            )
+          })}
         </div>
 
         {/* ── Seitenpanel: nicht platziert ── */}

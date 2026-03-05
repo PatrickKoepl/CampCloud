@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { Spinner, Avatar, Icon, Modal, Toast } from '../components/ui'
 import { fmt, fmtDate, nights, STATUS, PAYMENT } from '../lib/utils'
+import InvoiceModal, { DunningModal } from '../components/Invoice'
 
 // ─── Form ─────────────────────────────────────────────────────────────────────
 function BookingForm({ initial, sites, onSave, onClose }) {
@@ -103,7 +104,12 @@ function BookingForm({ initial, sites, onSave, onClose }) {
 }
 
 // ─── Detail ───────────────────────────────────────────────────────────────────
-function BookingDetail({ booking, onEdit, onDelete, onClose }) {
+function BookingDetail({ booking, campground, onEdit, onDelete, onClose }) {
+  const [showInvoice, setShowInvoice] = useState(false)
+  const [showDunning, setShowDunning] = useState(false)
+  const daysPending = Math.floor((Date.now() - new Date(booking.created_at)) / 86400000)
+  const isOverdue = booking.payment === 'pending' && !['cancelled','departed'].includes(booking.status) && daysPending >= 14
+
   if (!booking) return null
   return (
     <div className="page">
@@ -158,20 +164,43 @@ function BookingDetail({ booking, onEdit, onDelete, onClose }) {
               <span className={`badge ${PAYMENT[booking.payment]?.cls}`} style={{ fontSize: 13, padding: '5px 13px' }}>
                 {PAYMENT[booking.payment]?.label}
               </span>
+              {isOverdue && (
+                <span className="badge badge-amber" style={{ fontSize: 13, padding: '5px 13px' }}>
+                  ⚠️ {daysPending} Tage offen
+                </span>
+              )}
             </div>
             <div style={{ background: 'var(--green-100)', border: '1px solid var(--green-200)', borderRadius: 10, padding: '18px 22px', textAlign: 'center', marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Gesamtbetrag</div>
-              <div style={{ fontFamily: "'Sora', sans-serif", fontSize: 30, fontWeight: 700, color: 'var(--green-900)' }}>
+              <div style={{ fontFamily: "'Sora',sans-serif", fontSize: 30, fontWeight: 700, color: 'var(--green-900)' }}>
                 {fmt(booking.total)}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-secondary" style={{ flex: 1 }}><Icon name="mail" /> E-Mail senden</button>
-              <button className="btn btn-secondary" style={{ flex: 1 }}><Icon name="invoice" /> Rechnung</button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowInvoice(true)}>
+                  <Icon name="invoice" /> Rechnung
+                </button>
+                {booking.email && (
+                  <a className="btn btn-secondary" style={{ flex: 1, textAlign: 'center' }}
+                    href={`mailto:${booking.email}?subject=Ihre Buchung bei ${campground?.name || 'uns'}`}>
+                    <Icon name="mail" /> E-Mail
+                  </a>
+                )}
+              </div>
+              {isOverdue && (
+                <button className="btn btn-secondary" style={{ width: '100%', borderColor: '#FCD34D', color: '#92400E' }}
+                  onClick={() => setShowDunning(true)}>
+                  ⚠️ Zahlungserinnerung senden
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {showInvoice && <InvoiceModal booking={booking} campground={campground} onClose={() => setShowInvoice(false)} />}
+      {showDunning && <DunningModal booking={booking} campground={campground} onClose={() => setShowDunning(false)} />}
     </div>
   )
 }
@@ -179,7 +208,6 @@ function BookingDetail({ booking, onEdit, onDelete, onClose }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function Bookings() {
   const { campground } = useAuth()
-  const navigate = useNavigate()
   const { id: detailId } = useParams()
 
   const [bookings, setBookings] = useState([])
@@ -298,16 +326,8 @@ export default function Bookings() {
     <>
       <BookingDetail
         booking={detail}
-        onEdit={() => {
-          /*
-           * BUG FIX: Previously this called navigate('/buchungen') which caused
-           * React Router to match a different <Route> element and remount the
-           * component → editing state was lost → form never opened.
-           * Fix: set editing state here and show the form ON TOP of the detail
-           * view without any navigation. The user saves/cancels from the modal.
-           */
-          setEditing(detail)
-        }}
+        campground={campground}
+        onEdit={() => { setEditing(detail) }}
         onDelete={() => del(detail.id)}
         onClose={() => navigate('/buchungen')}
       />
