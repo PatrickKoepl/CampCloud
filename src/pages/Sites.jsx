@@ -83,6 +83,7 @@ function SiteForm({ initial, onSave, onClose }) {
 export default function Sites() {
   const { campground, user, refreshCampground } = useAuth()
   const [sites, setSites]       = useState([])
+  const [bookings, setBookings] = useState([])
   const [loading, setLoading]   = useState(true)
   const [viewMode, setViewMode] = useState('plan')   // 'plan' | 'grid' | 'list'
   const [filter, setFilter]     = useState('all')
@@ -93,12 +94,13 @@ export default function Sites() {
 
   const load = useCallback(async () => {
     if (!campground) return
-    const { data, error } = await supabase
-      .from('sites').select('*')
-      .eq('campground_id', campground.id)
-      .order('area').order('name')
+    const [{ data: sitesData, error }, { data: bookingsData }] = await Promise.all([
+      supabase.from('sites').select('*').eq('campground_id', campground.id).order('area').order('name'),
+      supabase.from('bookings').select('id,site_id,status').eq('campground_id', campground.id),
+    ])
     if (error) { console.error(error.message); return }
-    setSites(data || [])
+    setSites(sitesData || [])
+    setBookings(bookingsData || [])
     setLoading(false)
   }, [campground])
 
@@ -128,7 +130,28 @@ export default function Sites() {
   }
 
   const del = async (id) => {
-    if (!confirm('Stellplatz wirklich löschen?')) return
+    const site = sites.find(s => s.id === id)
+
+    // Schutz 1: Hat aktive Buchungen?
+    const { data: linkedBookings } = await supabase
+      .from('bookings')
+      .select('id')
+      .eq('site_id', id)
+      .not('status', 'in', '("cancelled","departed")')
+      .limit(1)
+
+    if (linkedBookings?.length > 0) {
+      toast$('⛔ Löschen nicht möglich — Stellplatz hat aktive Buchungen')
+      return
+    }
+
+    // Schutz 2: Auf Platzplan platziert?
+    if (site?.x_pos != null) {
+      toast$('📍 Bitte zuerst den Stellplatz vom Platzplan entfernen')
+      return
+    }
+
+    if (!confirm(`Stellplatz „${site?.name}" wirklich löschen?`)) return
     const { error } = await supabase.from('sites').delete().eq('id', id)
     if (error) { toast$('Fehler: ' + error.message); return }
     toast$('Stellplatz gelöscht')
@@ -221,6 +244,7 @@ export default function Sites() {
         {viewMode === 'plan' && (
           <CampMap
             sites={sites}
+            bookings={bookings}
             campground={campground}
             userId={user?.id}
             onStatusChange={setStatus}
