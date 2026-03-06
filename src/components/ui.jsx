@@ -88,3 +88,58 @@ export const Modal = ({ title, onClose, children, footer, size = '' }) => (
     </div>
   </div>
 )
+
+// ─── Alert Modal (Fehlermeldung) ──────────────────────────────────────────────
+export const AlertModal = ({ title, message, detail, onClose, type = 'error' }) => {
+  const cfg = {
+    error:   { icon: '⛔', bg: '#FEF2F2', border: '#FECACA', color: '#991B1B', btnCls: 'btn-danger' },
+    warning: { icon: '⚠️', bg: '#FFFBEB', border: '#FCD34D', color: '#92400E', btnCls: 'btn-secondary' },
+    info:    { icon: 'ℹ️', bg: '#EFF6FF', border: '#BFDBFE', color: '#1E40AF', btnCls: 'btn-secondary' },
+  }[type] || {}
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 460 }}>
+        <div className="modal-header" style={{ background: cfg.bg, borderBottom: `1px solid ${cfg.border}` }}>
+          <div className="modal-title" style={{ color: cfg.color, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 18 }}>{cfg.icon}</span> {title}
+          </div>
+          <button className="btn btn-ghost btn-icon" onClick={onClose}><Icon name="x" /></button>
+        </div>
+        <div className="modal-body">
+          <p style={{ marginBottom: detail ? 12 : 0, fontSize: 14, lineHeight: 1.6 }}>{message}</p>
+          {detail && (
+            <div style={{ background: '#F9FAFB', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--text-muted)' }}>
+              {detail}
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-primary" onClick={onClose}>Verstanden</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Confirm Modal ────────────────────────────────────────────────────────────
+export const ConfirmModal = ({ title, message, confirmLabel = 'Löschen', onConfirm, onClose, danger = true }) => (
+  <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal" style={{ maxWidth: 420 }}>
+      <div className="modal-header">
+        <div className="modal-title">{title}</div>
+        <button className="btn btn-ghost btn-icon" onClick={onClose}><Icon name="x" /></button>
+      </div>
+      <div className="modal-body">
+        <p style={{ fontSize: 14, lineHeight: 1.6 }}>{message}</p>
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-secondary" onClick={onClose}>Abbrechen</button>
+        <button
+          className="btn btn-primary"
+          style={danger ? { background: '#DC2626', borderColor: '#DC2626' } : {}}
+          onClick={() => { onConfirm(); onClose() }}
+        >{confirmLabel}</button>
+      </div>
+    </div>
+  </div>
+)

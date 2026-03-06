@@ -446,14 +446,31 @@ export default function CampMap({
               ? <div style={{ padding: '20px 14px', fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>✅ Alle platziert</div>
               : unplaced.map((s, i) => {
                 const cfg = STATUS_COLOR[s.status]
+                const typeEmoji = s.type === 'Mietunterkunft' ? '🏡' : s.type === 'Dauercamping' ? '🚛' : '🚐'
                 return (
-                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', borderBottom: '1px solid var(--border)', background: editMode && i === 0 ? '#FEF3C7' : 'transparent' }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 5, background: cfg.bg, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff' }}>{s.name}</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 500, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.type}</div>
+                  <div key={s.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px',
+                    borderBottom: '1px solid var(--border)',
+                    background: editMode && i === 0 ? '#FEF3C7' : 'transparent',
+                  }}>
+                    {/* Farbiges Icon-Quadrat mit Typ-Emoji */}
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 7, background: cfg.bg, flexShrink: 0,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                      border: `2px solid ${cfg.border}`,
+                    }}>
+                      <span style={{ fontSize: 14, lineHeight: 1 }}>{typeEmoji}</span>
+                      <span style={{ fontSize: 8, fontWeight: 700, color: '#fff', lineHeight: 1, marginTop: 1 }}>
+                        {s.name.length > 4 ? s.name.slice(0, 4) : s.name}
+                      </span>
                     </div>
-                    {editMode && i === 0 && <span style={{ fontSize: 9, color: '#92400E', flexShrink: 0 }}>← Nächster</span>}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{s.type}</div>
+                    </div>
+                    {editMode && i === 0 && (
+                      <span style={{ fontSize: 9, color: '#92400E', background: '#FEF3C7', padding: '2px 5px', borderRadius: 4, flexShrink: 0, fontWeight: 600 }}>Nächster</span>
+                    )}
                   </div>
                 )
               })

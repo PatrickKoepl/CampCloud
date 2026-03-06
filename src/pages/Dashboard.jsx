@@ -25,56 +25,96 @@ const loadLayout = () => {
 const saveLayout = (layout) => localStorage.setItem(STORAGE_KEY, JSON.stringify(layout))
 
 // ─── Einzelner Drag-fähiger Block-Wrapper ────────────────────────────────────
-function DraggableBlock({ id, index, editMode, onDrop, onRemove, children }) {
-  const dragRef = useRef(null)
+function DraggableBlock({ id, index, total, editMode, onDrop, onRemove, onMove, children }) {
+  const ref       = useRef(null)
+  const handleRef = useRef(null)
+  const fromHandle = useRef(false)
+  const [dragOver, setDragOver] = useState(false)
+
+  // Nur erlauben wenn Drag vom Handle gestartet wird
+  const onMouseDownHandle = () => { fromHandle.current = true }
+  const onMouseUp = () => { fromHandle.current = false }
 
   const onDragStart = (e) => {
-    e.dataTransfer.setData('text/plain', index)
+    if (!fromHandle.current) { e.preventDefault(); return }
+    e.dataTransfer.setData('text/plain', String(index))
     e.dataTransfer.effectAllowed = 'move'
-    setTimeout(() => { if (dragRef.current) dragRef.current.style.opacity = '0.4' }, 0)
+    setTimeout(() => { if (ref.current) ref.current.style.opacity = '0.45' }, 0)
   }
-  const onDragEnd = () => { if (dragRef.current) dragRef.current.style.opacity = '1' }
-  const onDragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }
+  const onDragEnd = () => {
+    fromHandle.current = false
+    if (ref.current) ref.current.style.opacity = '1'
+    setDragOver(false)
+  }
+  const onDragOver = (e) => { e.preventDefault(); setDragOver(true) }
+  const onDragLeave = () => setDragOver(false)
   const onDropHere = (e) => {
-    e.preventDefault()
+    e.preventDefault(); setDragOver(false)
     const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10)
-    if (fromIdx !== index) onDrop(fromIdx, index)
+    if (!isNaN(fromIdx) && fromIdx !== index) onDrop(fromIdx, index)
   }
+
+  if (!editMode) return <div ref={ref}>{children}</div>
 
   return (
     <div
-      ref={dragRef}
-      draggable={editMode}
+      ref={ref}
+      draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
       onDrop={onDropHere}
+      onMouseUp={onMouseUp}
       style={{
         position: 'relative',
-        cursor: editMode ? 'grab' : 'default',
-        transition: 'outline .15s',
-        outline: editMode ? '2px dashed var(--green-300)' : 'none',
+        outline: dragOver ? '2px solid #2D6A4F' : '2px dashed #B7E4C7',
+        outlineOffset: 2,
         borderRadius: 14,
+        background: dragOver ? 'rgba(27,67,50,0.04)' : 'transparent',
+        transition: 'outline-color .15s, background .15s',
       }}
     >
-      {editMode && (
-        <div style={{
-          position: 'absolute', top: -10, right: -10, zIndex: 20,
-          display: 'flex', gap: 5,
-        }}>
-          <div style={{
-            background: '#fff', border: '1px solid var(--border)', borderRadius: 8,
-            padding: '3px 8px', fontSize: 11, color: 'var(--text-muted)', userSelect: 'none',
-            boxShadow: '0 2px 8px rgba(0,0,0,.1)',
-          }}>⠿ ziehen</div>
-          <button
-            onClick={() => onRemove(id)}
-            style={{ width: 24, height: 24, borderRadius: '50%', background: '#EF4444', border: 'none', color: '#fff', fontSize: 12, cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
-            title={`„${BLOCK_LABELS[id]}" entfernen`}
-          >✕</button>
-        </div>
-      )}
-      {children}
+      {/* ── Handle-Leiste ── */}
+      <div
+        ref={handleRef}
+        onMouseDown={onMouseDownHandle}
+        style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: 36, zIndex: 10,
+          background: 'linear-gradient(135deg,#1B4332,#2D6A4F)',
+          borderRadius: '12px 12px 0 0',
+          display: 'flex', alignItems: 'center',
+          padding: '0 10px', gap: 8, cursor: 'grab',
+          userSelect: 'none',
+        }}
+      >
+        <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', letterSpacing: 1 }}>⠿</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.85)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {BLOCK_LABELS[id]}
+        </span>
+        {/* ↑↓ Buttons */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onMove(index, index - 1) }}
+          disabled={index === 0}
+          style={{ width: 24, height: 24, borderRadius: 5, border: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', cursor: index === 0 ? 'not-allowed' : 'pointer', opacity: index === 0 ? 0.35 : 1, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          title="Nach oben"
+        >↑</button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onMove(index, index + 1) }}
+          disabled={index === total - 1}
+          style={{ width: 24, height: 24, borderRadius: 5, border: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', cursor: index === total - 1 ? 'not-allowed' : 'pointer', opacity: index === total - 1 ? 0.35 : 1, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          title="Nach unten"
+        >↓</button>
+        {/* Löschen-Button */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onRemove(id) }}
+          style={{ width: 24, height: 24, borderRadius: 5, border: 'none', background: '#EF4444', color: '#fff', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}
+          title={`„${BLOCK_LABELS[id]}" ausblenden`}
+        >✕</button>
+      </div>
+
+      {/* Content mit Abstand zur Handle-Leiste */}
+      <div style={{ paddingTop: 36 }}>{children}</div>
     </div>
   )
 }
@@ -105,6 +145,17 @@ export default function Dashboard() {
   }
 
   const handleDrop = useCallback((fromIdx, toIdx) => {
+    setLayout(prev => {
+      const next = [...prev]
+      const [moved] = next.splice(fromIdx, 1)
+      next.splice(toIdx, 0, moved)
+      saveLayout(next)
+      return next
+    })
+  }, [])
+
+  const handleMove = useCallback((fromIdx, toIdx) => {
+    if (toIdx < 0 || toIdx >= ALL_BLOCKS.length) return
     setLayout(prev => {
       const next = [...prev]
       const [moved] = next.splice(fromIdx, 1)
@@ -183,7 +234,7 @@ export default function Dashboard() {
   // ─── Block-Renderer ────────────────────────────────────────────────────────
   const renderBlock = (id, index) => {
     const wrap = (content) => (
-      <DraggableBlock key={id} id={id} index={index} editMode={editMode} onDrop={handleDrop} onRemove={handleRemove}>
+      <DraggableBlock key={id} id={id} index={index} total={layout.length} editMode={editMode} onDrop={handleDrop} onRemove={handleRemove} onMove={handleMove}>
         {content}
       </DraggableBlock>
     )

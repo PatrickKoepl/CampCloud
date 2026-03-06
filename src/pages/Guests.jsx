@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
-import { Spinner, Avatar, Icon, Modal, Toast } from '../components/ui'
+import { Spinner, Avatar, Icon, Modal, Toast, AlertModal, ConfirmModal } from '../components/ui'
 import { fmtDate, validateBirthDate } from '../lib/utils'
 
 function GuestForm({ initial, onSave, onClose }) {
@@ -111,6 +111,8 @@ export default function Guests() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
   const [toast, setToast]     = useState('')
+  const [errorModal, setErrorModal] = useState(null)   // { title, message, detail }
+  const [confirmDel, setConfirmDel] = useState(null)   // guest object
   const toast$ = (m) => { setToast(m); setTimeout(() => setToast(''), 2800) }
 
   // BUG FIX: useCallback for stable reference
@@ -156,9 +158,33 @@ export default function Guests() {
   }
 
   const del = async (id) => {
-    if (!confirm('Gast wirklich löschen?')) return
+    // Prüfen ob Buchungen für diesen Gast existieren
+    const { data: bookings, error: bErr } = await supabase
+      .from('bookings')
+      .select('id, booking_number, site_name, arrival, departure')
+      .eq('guest_id', id)
+      .limit(5)
+    if (bErr) { toast$('⛔ Fehler beim Prüfen: ' + bErr.message); return }
+
+    if (bookings && bookings.length > 0) {
+      const list = bookings.map(b =>
+        `• Buchung #${b.booking_number}: ${b.site_name}, ${fmtDate(b.arrival)} – ${fmtDate(b.departure)}`
+      ).join('\n')
+      setErrorModal({
+        title: 'Gast kann nicht gelöscht werden',
+        message: `Dieser Gast hat noch ${bookings.length} verknüpfte Buchung${bookings.length > 1 ? 'en' : ''} (und zugehörige Rechnungen). Bitte lösche zuerst alle Buchungen dieses Gastes, bevor du ihn entfernst.`,
+        detail: list,
+      })
+      return
+    }
+
+    // Keine Buchungen → Bestätigungs-Dialog
+    setConfirmDel(guests.find(g => g.id === id))
+  }
+
+  const doDelete = async (id) => {
     const { error } = await supabase.from('guests').delete().eq('id', id)
-    if (error) { toast$('Fehler: ' + error.message); return }
+    if (error) { toast$('⛔ Fehler: ' + error.message); return }
     toast$('Gast gelöscht')
     await load()
   }
@@ -236,6 +262,27 @@ export default function Guests() {
       {(showForm || editing) && (
         <GuestForm initial={editing} onSave={save} onClose={() => { setShowForm(false); setEditing(null) }} />
       )}
+
+      {errorModal && (
+        <AlertModal
+          type="error"
+          title={errorModal.title}
+          message={errorModal.message}
+          detail={errorModal.detail}
+          onClose={() => setErrorModal(null)}
+        />
+      )}
+
+      {confirmDel && (
+        <ConfirmModal
+          title="Gast löschen?"
+          message={`Soll „${confirmDel.name}" wirklich dauerhaft gelöscht werden? Diese Aktion kann nicht rückgängig gemacht werden.`}
+          confirmLabel="Ja, löschen"
+          onConfirm={() => doDelete(confirmDel.id)}
+          onClose={() => setConfirmDel(null)}
+        />
+      )}
+
       <Toast msg={toast} />
     </div>
   )
