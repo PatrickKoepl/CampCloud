@@ -112,11 +112,11 @@ export default function Sites() {
     const payload = { ...form, campground_id: campground.id }
     let error
     if (form.id) {
-      const { id: _id, campground_id: _cid, created_at: _cat, x_pos: _x, y_pos: _y, ...rest } = payload
-      // keep x_pos/y_pos in update if they exist on the form
+      const { id: _id, campground_id: _cid, created_at: _cat, x_pos: _x, y_pos: _y, lat: _lat, lng: _lng, ...rest } = payload
+      // keep lat/lng in update if they exist on the form
       const updatePayload = { ...rest }
-      if (form.x_pos != null) updatePayload.x_pos = form.x_pos
-      if (form.y_pos != null) updatePayload.y_pos = form.y_pos
+      if (form.lat != null) updatePayload.lat = form.lat
+      if (form.lng != null) updatePayload.lng = form.lng
       ;({ error } = await supabase.from('sites').update(updatePayload).eq('id', form.id))
       if (!error) toast$('Stellplatz gespeichert')
     } else {
@@ -146,7 +146,7 @@ export default function Sites() {
     }
 
     // Schutz 2: Auf Platzplan platziert?
-    if (site?.x_pos != null) {
+    if (site?.lat != null) {
       toast$('📍 Bitte zuerst den Stellplatz vom Platzplan entfernen')
       return
     }
@@ -171,9 +171,9 @@ export default function Sites() {
   }
 
   // Marker-Position speichern — null = von Karte entfernen
-  const savePosition = useCallback(async (id, x, y) => {
+  const savePosition = useCallback(async (id, lat, lng) => {
     const { error } = await supabase.from('sites')
-      .update({ x_pos: x ?? null, y_pos: y ?? null })
+      .update({ lat: lat ?? null, lng: lng ?? null })
       .eq('id', id)
     if (!error) await load()
     else toast$('Fehler beim Speichern: ' + error.message)
@@ -246,12 +246,10 @@ export default function Sites() {
             sites={sites}
             bookings={bookings}
             campground={campground}
-            userId={user?.id}
             onStatusChange={setStatus}
             onEdit={s => setEditing(s)}
             onDelete={del}
             onPositionSave={savePosition}
-            onBgSave={saveBg}
           />
         )}
 
@@ -320,7 +318,7 @@ export default function Sites() {
                         <td>{s.electric ? <span className="badge badge-green">✓</span> : <span className="badge badge-gray">–</span>}</td>
                         <td>{s.water   ? <span className="badge badge-blue">✓</span>  : <span className="badge badge-gray">–</span>}</td>
                         <td>
-                          {s.x_pos != null
+                          {s.lat != null
                             ? <span className="badge badge-green">Platziert</span>
                             : <span className="badge badge-gray">Fehlt</span>}
                         </td>

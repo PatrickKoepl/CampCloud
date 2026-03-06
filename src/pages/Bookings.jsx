@@ -7,28 +7,64 @@ import { fmt, fmtDate, nights, STATUS, PAYMENT, validateBookingDates } from '../
 import InvoiceModal, { DunningModal } from '../components/Invoice'
 
 // ─── Form ─────────────────────────────────────────────────────────────────────
-function BookingForm({ initial, sites, onSave, onClose }) {
+function BookingForm({ initial, sites, priceLists, onSave, onClose }) {
   const blank = {
     guest_name: '', email: '', site_id: '', site_name: '',
     type: 'Stellplatz', arrival: '', departure: '',
     persons: 2, status: 'confirmed', payment: 'pending', total: 0, notes: '',
   }
-  const [form, setForm] = useState(initial || blank)
-  const [saving, setSaving] = useState(false)
-  const [errors, setErrors] = useState({})
+  const [form, setForm]         = useState(initial || blank)
+  const [saving, setSaving]     = useState(false)
+  const [errors, setErrors]     = useState({})
+  const [calcPrice, setCalcPrice] = useState(null) // berechneter Preis aus Preisliste
+  const [priceNote, setPriceNote] = useState('')
+
   const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); setErrors(e => ({ ...e, [k]: null })) }
 
-  // Wenn Stellplatz gewählt wird, site_id + site_name + type synchronisieren
+  // Stellplatz wählen → site_id + site_name + type synchronisieren
   const onSiteChange = (siteId) => {
     const site = sites.find(s => s.id === siteId)
-    setForm(f => ({
-      ...f,
-      site_id:   siteId,
-      site_name: site?.name || '',
-      type:      site?.type || f.type,
-    }))
+    setForm(f => ({ ...f, site_id: siteId, site_name: site?.name || '', type: site?.type || f.type }))
     setErrors(e => ({ ...e, site_id: null }))
   }
+
+  // ── Auto-Preisberechnung ────────────────────────────────────────────────
+  useEffect(() => {
+    const site = sites.find(s => s.id === form.site_id)
+    const n    = nights(form.arrival, form.departure)
+    if (!site || n <= 0 || !priceLists?.length) { setCalcPrice(null); setPriceNote(''); return }
+
+    // Passende aktive Preisliste (nach Typ)
+    const pl = priceLists.find(p => p.active && p.type === site.type)
+      || priceLists.find(p => p.active) // Fallback: erste aktive
+    if (!pl) { setCalcPrice(null); setPriceNote('Keine passende Preisliste gefunden'); return }
+
+    const base     = (pl.base_price || 0) * n
+    const perPers  = (pl.per_person || 0) * form.persons * n
+    const elec     = site.electric ? (pl.electricity || 0) * n : 0
+    const total    = Math.round((base + perPers + elec) * 100) / 100
+    setCalcPrice(total)
+    setPriceNote(
+      `${pl.name}: ${n}N × ${fmt(pl.base_price)}` +
+      (pl.per_person > 0 ? ` + ${form.persons} Pers. × ${fmt(pl.per_person)}` : '') +
+      (site.electric && pl.electricity > 0 ? ` + Strom ${fmt(pl.electricity)}` : '') +
+      `/N`
+    )
+  }, [form.site_id, form.arrival, form.departure, form.persons, sites, priceLists])
+
+  // Berechneten Preis übernehmen
+  const applyCalcPrice = () => {
+    if (calcPrice != null) setForm(f => ({ ...f, total: calcPrice }))
+  }
+
+  // Beim Öffnen: site_id aus bestehender Buchung rückwärts ermitteln
+  useEffect(() => {
+    if (initial?.site_id) return
+    if (initial?.site_name && sites.length > 0) {
+      const match = sites.find(s => s.name === initial.site_name)
+      if (match) setForm(f => ({ ...f, site_id: match.id }))
+    }
+  }, [initial, sites]) // eslint-disable-line
 
   const validate = () => {
     const errs = {}
@@ -36,8 +72,8 @@ function BookingForm({ initial, sites, onSave, onClose }) {
     if (!form.site_id && !form.site_name) errs.site_id = 'Bitte Stellplatz wählen'
     const dateErr = validateBookingDates(form.arrival, form.departure)
     if (dateErr) errs.dates = dateErr
-    if (form.persons < 1 || form.persons > 100) errs.persons = 'Bitte gültige Personenzahl eingeben (1–100)'
-    if (form.total < 0) errs.total = 'Betrag darf nicht negativ sein'
+    if (form.persons < 1 || form.persons > 100) errs.persons = 'Gültige Personenzahl (1–100)'
+    if (form.total < 0) errs.total = 'Darf nicht negativ sein'
     return errs
   }
 
@@ -50,15 +86,6 @@ function BookingForm({ initial, sites, onSave, onClose }) {
   }
 
   const nightCount = nights(form.arrival, form.departure)
-
-  // Beim Öffnen: site_id aus bestehender Buchung rückwärts ermitteln
-  useEffect(() => {
-    if (initial?.site_id) return  // bereits gesetzt
-    if (initial?.site_name && sites.length > 0) {
-      const match = sites.find(s => s.name === initial.site_name)
-      if (match) setForm(f => ({ ...f, site_id: match.id }))
-    }
-  }, [initial, sites]) // eslint-disable-line
 
   return (
     <Modal
@@ -74,12 +101,8 @@ function BookingForm({ initial, sites, onSave, onClose }) {
       <div className="form-row">
         <div className="form-group">
           <label className="form-label">Gastname <span className="req">*</span></label>
-          <input
-            className={`form-input ${errors.guest_name ? 'input-error' : ''}`}
-            value={form.guest_name}
-            onChange={e => set('guest_name', e.target.value)}
-            placeholder="Max Mustermann"
-          />
+          <input className={`form-input ${errors.guest_name ? 'input-error' : ''}`}
+            value={form.guest_name} onChange={e => set('guest_name', e.target.value)} placeholder="Max Mustermann" />
           {errors.guest_name && <div className="field-error">{errors.guest_name}</div>}
         </div>
         <div className="form-group">
@@ -87,16 +110,14 @@ function BookingForm({ initial, sites, onSave, onClose }) {
           <input className="form-input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="gast@email.de" />
         </div>
       </div>
+
       <div className="form-row">
         <div className="form-group">
           <label className="form-label">Stellplatz <span className="req">*</span></label>
-          <select
-            className={`form-select ${errors.site_id ? 'input-error' : ''}`}
-            value={form.site_id || ''}
-            onChange={e => onSiteChange(e.target.value)}
-          >
+          <select className={`form-select ${errors.site_id ? 'input-error' : ''}`}
+            value={form.site_id || ''} onChange={e => onSiteChange(e.target.value)}>
             <option value="">Stellplatz wählen…</option>
-            {sites.map(s => <option key={s.id} value={s.id}>{s.name} ({s.type})</option>)}
+            {sites.map(s => <option key={s.id} value={s.id}>{s.name} ({s.type}){s.status === 'blocked' ? ' — Gesperrt' : ''}</option>)}
           </select>
           {errors.site_id && <div className="field-error">{errors.site_id}</div>}
         </div>
@@ -112,27 +133,17 @@ function BookingForm({ initial, sites, onSave, onClose }) {
       <div className="form-row">
         <div className="form-group">
           <label className="form-label">Anreise <span className="req">*</span></label>
-          <input
-            className={`form-input ${errors.dates ? 'input-error' : ''}`}
-            type="date"
-            value={form.arrival}
-            onChange={e => set('arrival', e.target.value)}
-          />
+          <input className={`form-input ${errors.dates ? 'input-error' : ''}`}
+            type="date" value={form.arrival} onChange={e => set('arrival', e.target.value)} />
         </div>
         <div className="form-group">
           <label className="form-label">Abreise <span className="req">*</span></label>
-          <input
-            className={`form-input ${errors.dates ? 'input-error' : ''}`}
-            type="date"
-            value={form.departure}
-            min={form.arrival || undefined}
-            onChange={e => set('departure', e.target.value)}
-          />
+          <input className={`form-input ${errors.dates ? 'input-error' : ''}`}
+            type="date" value={form.departure} min={form.arrival || undefined}
+            onChange={e => set('departure', e.target.value)} />
         </div>
       </div>
-      {errors.dates && (
-        <div className="field-error" style={{ marginTop: -8, marginBottom: 8 }}>⚠️ {errors.dates}</div>
-      )}
+      {errors.dates && <div className="field-error" style={{ marginTop: -8, marginBottom: 8 }}>⚠️ {errors.dates}</div>}
       {nightCount > 0 && !errors.dates && (
         <div style={{ fontSize: 12, color: 'var(--green-700)', marginTop: -8, marginBottom: 10, fontWeight: 500 }}>
           ✓ {nightCount} Nacht{nightCount !== 1 ? 'e' : ''}
@@ -142,25 +153,30 @@ function BookingForm({ initial, sites, onSave, onClose }) {
       <div className="form-row">
         <div className="form-group">
           <label className="form-label">Personen</label>
-          <input
-            className={`form-input ${errors.persons ? 'input-error' : ''}`}
-            type="number" min="1" max="100"
-            value={form.persons}
-            onChange={e => set('persons', Math.max(1, +e.target.value))}
-          />
+          <input className={`form-input ${errors.persons ? 'input-error' : ''}`}
+            type="number" min="1" max="100" value={form.persons}
+            onChange={e => set('persons', Math.max(1, +e.target.value))} />
           {errors.persons && <div className="field-error">{errors.persons}</div>}
         </div>
         <div className="form-group">
           <label className="form-label">Gesamtbetrag (€)</label>
-          <input
-            className={`form-input ${errors.total ? 'input-error' : ''}`}
-            type="number" min="0" step="0.01"
-            value={form.total}
-            onChange={e => set('total', Math.max(0, +e.target.value))}
-          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input className={`form-input ${errors.total ? 'input-error' : ''}`}
+              type="number" min="0" step="0.01" value={form.total}
+              onChange={e => set('total', Math.max(0, +e.target.value))}
+              style={{ flex: 1 }} />
+            {calcPrice != null && (
+              <button type="button" onClick={applyCalcPrice} className="btn btn-secondary btn-sm"
+                title={priceNote} style={{ flexShrink: 0, fontSize: 12 }}>
+                = {fmt(calcPrice)}
+              </button>
+            )}
+          </div>
+          {priceNote && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{priceNote}</div>}
           {errors.total && <div className="field-error">{errors.total}</div>}
         </div>
       </div>
+
       <div className="form-row">
         <div className="form-group">
           <label className="form-label">Status</label>
@@ -177,7 +193,8 @@ function BookingForm({ initial, sites, onSave, onClose }) {
       </div>
       <div className="form-group">
         <label className="form-label">Notizen</label>
-        <textarea className="form-textarea" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Interne Notizen zur Buchung…" />
+        <textarea className="form-textarea" rows={2} value={form.notes}
+          onChange={e => set('notes', e.target.value)} placeholder="Interne Notizen…" />
       </div>
     </Modal>
   )
@@ -291,102 +308,156 @@ export default function Bookings() {
   const navigate = useNavigate()
   const { id: detailId } = useParams()
 
-  const [bookings, setBookings] = useState([])
-  const [sites, setSites]       = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [search, setSearch]     = useState('')
-  const [statusF, setStatusF]   = useState('all')
-  const [showForm, setShowForm] = useState(false)
-  const [editing, setEditing]   = useState(null)
-  const [toast, setToast]       = useState('')
+  const [bookings, setBookings]     = useState([])
+  const [sites, setSites]           = useState([])
+  const [priceLists, setPriceLists] = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [search, setSearch]         = useState('')
+  const [statusF, setStatusF]       = useState('all')
+  const [showForm, setShowForm]     = useState(false)
+  const [editing, setEditing]       = useState(null)
+  const [toast, setToast]           = useState('')
 
-  const toast$ = (m) => { setToast(m); setTimeout(() => setToast(''), 2800) }
+  const toast$ = (m) => { setToast(m); setTimeout(() => setToast(''), 3500) }
 
-  // BUG FIX: useCallback so load() is stable and doesn't re-create on every render
   const load = useCallback(async () => {
     if (!campground) return
-    const [{ data: b, error: be }, { data: s }] = await Promise.all([
+    const [{ data: b, error: be }, { data: s }, { data: p }] = await Promise.all([
       supabase.from('bookings').select('*').eq('campground_id', campground.id).order('arrival', { ascending: false }),
       supabase.from('sites').select('*').eq('campground_id', campground.id).order('name'),
+      supabase.from('price_lists').select('*').eq('campground_id', campground.id).eq('active', true),
     ])
-    if (be) { console.error('Buchungen laden fehlgeschlagen:', be.message); return }
+    if (be) { console.error(be.message); return }
     setBookings(b || [])
     setSites(s || [])
+    setPriceLists(p || [])
     setLoading(false)
   }, [campground])
 
   useEffect(() => { load() }, [load])
 
-  // Gast automatisch anlegen oder verknüpfen
+  // ── Gast automatisch anlegen / verknüpfen ─────────────────────────────────
   const resolveGuest = async (guestName, email) => {
     if (!guestName) return null
-    // Erst nach bestehendem Gast suchen (E-Mail oder Name)
     let existing = null
     if (email) {
       const { data } = await supabase.from('guests')
-        .select('id, visits')
-        .eq('campground_id', campground.id)
-        .eq('email', email)
-        .maybeSingle()
+        .select('id, visits').eq('campground_id', campground.id).eq('email', email).maybeSingle()
       existing = data
     }
     if (!existing) {
       const { data } = await supabase.from('guests')
-        .select('id, visits')
-        .eq('campground_id', campground.id)
-        .ilike('name', guestName.trim())
-        .maybeSingle()
+        .select('id, visits').eq('campground_id', campground.id).ilike('name', guestName.trim()).maybeSingle()
       existing = data
     }
-
     if (existing) {
-      // Besuchszähler erhöhen + letzten Besuch aktualisieren
       await supabase.from('guests').update({
-        visits:     (existing.visits || 0) + 1,
+        visits: (existing.visits || 0) + 1,
         last_visit: new Date().toISOString().slice(0, 10),
         ...(email ? { email } : {}),
       }).eq('id', existing.id)
       return existing.id
     } else {
-      // Neuen Gast anlegen
       const { data } = await supabase.from('guests').insert({
         campground_id: campground.id,
-        name:       guestName.trim(),
-        email:      email || null,
-        visits:     1,
-        last_visit: new Date().toISOString().slice(0, 10),
+        name: guestName.trim(), email: email || null,
+        visits: 1, last_visit: new Date().toISOString().slice(0, 10),
       }).select('id').single()
       return data?.id ?? null
     }
   }
 
+  // ── Doppelbuchungsprüfung ─────────────────────────────────────────────────
+  const checkDoubleBooking = async (siteId, arrival, departure, excludeId = null) => {
+    if (!siteId || !arrival || !departure) return false
+    let q = supabase.from('bookings')
+      .select('id, guest_name, arrival, departure')
+      .eq('campground_id', campground.id)
+      .eq('site_id', siteId)
+      .not('status', 'in', '("cancelled","departed")')
+      // Überschneidung: bestehende Buchung beginnt vor unserer Abreise UND endet nach unserer Anreise
+      .lt('arrival', departure)
+      .gt('departure', arrival)
+    if (excludeId) q = q.neq('id', excludeId)
+    const { data } = await q
+    return data?.length > 0 ? data[0] : false
+  }
+
+  // ── Speichern ─────────────────────────────────────────────────────────────
   const save = async (form) => {
-    // Gast automatisch verknüpfen (nur bei neuer Buchung oder wenn kein Gast gesetzt)
-    let guest_id = form.guest_id || null
-    if (!form.id || !guest_id) {
-      guest_id = await resolveGuest(form.guest_name, form.email)
+    // 1. Doppelbuchungsprüfung
+    const conflict = await checkDoubleBooking(form.site_id, form.arrival, form.departure, form.id)
+    if (conflict) {
+      toast$(`⛔ Doppelbuchung: Platz bereits belegt durch ${conflict.guest_name} (${fmtDate(conflict.arrival)}–${fmtDate(conflict.departure)})`)
+      return
     }
 
+    // 2. Gast verknüpfen
+    let guest_id = form.guest_id || null
+    if (!form.id || !guest_id) guest_id = await resolveGuest(form.guest_name, form.email)
+
+    const isNew = !form.id
     const payload = { ...form, campground_id: campground.id, guest_id }
-    let error
+
+    let error, savedBooking
     if (form.id) {
-      const { id: _id, campground_id: _cid, created_at: _cat, ...rest } = payload
-      ;({ error } = await supabase.from('bookings').update(rest).eq('id', form.id))
-      if (!error) toast$('Buchung gespeichert')
+      const { id: _id, campground_id: _cid, created_at: _cat, booking_number: _bn, ...rest } = payload
+      const res = await supabase.from('bookings').update(rest).eq('id', form.id).select().single()
+      error = res.error; savedBooking = res.data
+      if (!error) toast$('✓ Buchung gespeichert')
     } else {
       const { id: _id, ...rest } = payload
-      ;({ error } = await supabase.from('bookings').insert(rest))
-      if (!error) toast$('Buchung angelegt — Gast automatisch ' + (guest_id ? 'verknüpft' : 'angelegt'))
+      const res = await supabase.from('bookings').insert(rest).select().single()
+      error = res.error; savedBooking = res.data
     }
-    if (error) { toast$('Fehler: ' + error.message); return }
+    if (error) { toast$('⛔ Fehler: ' + error.message); return }
+
+    // 3. Stellplatz-Status auf 'occupied' setzen (nur bei aktiven Buchungen)
+    if (form.site_id && !['cancelled', 'departed'].includes(form.status)) {
+      await supabase.from('sites').update({ status: 'occupied' }).eq('id', form.site_id)
+    }
+    // Wenn storniert/abgereist → Platz freigeben (wenn keine anderen Buchungen)
+    if (form.site_id && ['cancelled', 'departed'].includes(form.status)) {
+      const { data: others } = await supabase.from('bookings')
+        .select('id').eq('site_id', form.site_id)
+        .not('status', 'in', '("cancelled","departed")')
+        .neq('id', form.id || 'x').limit(1)
+      if (!others?.length) await supabase.from('sites').update({ status: 'free' }).eq('id', form.site_id)
+    }
+
+    // 4. Bei neuer Buchung: automatisch eine Rechnung anlegen
+    if (isNew && savedBooking) {
+      const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 14)
+      await supabase.from('invoices').insert({
+        campground_id: campground.id,
+        booking_id:    savedBooking.id,
+        guest_id:      guest_id || null,
+        invoice_number: 0,
+        type:          'Rechnung',
+        amount:        savedBooking.total || 0,
+        issued_date:   new Date().toISOString().slice(0, 10),
+        due_date:      dueDate.toISOString().slice(0, 10),
+      })
+      toast$(`✓ Buchung angelegt · Rechnung erstellt · Gast ${guest_id ? 'verknüpft' : 'angelegt'}`)
+    }
+
     setShowForm(false); setEditing(null)
     await load()
   }
 
   const del = async (id) => {
     if (!confirm('Buchung wirklich löschen?')) return
+    // Hole site_id vor dem Löschen
+    const booking = bookings.find(b => b.id === id)
     const { error } = await supabase.from('bookings').delete().eq('id', id)
-    if (error) { toast$('Fehler: ' + error.message); return }
+    if (error) { toast$('⛔ Fehler: ' + error.message); return }
+    // Platz freigeben falls keine weiteren Buchungen
+    if (booking?.site_id) {
+      const { data: others } = await supabase.from('bookings')
+        .select('id').eq('site_id', booking.site_id)
+        .not('status', 'in', '("cancelled","departed")').limit(1)
+      if (!others?.length) await supabase.from('sites').update({ status: 'free' }).eq('id', booking.site_id)
+    }
     navigate('/buchungen')
     toast$('Buchung gelöscht')
     await load()
@@ -408,7 +479,7 @@ export default function Bookings() {
       <BookingDetail
         booking={detail}
         campground={campground}
-        onEdit={() => { setEditing(detail) }}
+        onEdit={() => setEditing(detail)}
         onDelete={() => del(detail.id)}
         onClose={() => navigate('/buchungen')}
       />
@@ -416,6 +487,7 @@ export default function Bookings() {
         <BookingForm
           initial={editing}
           sites={sites}
+          priceLists={priceLists}
           onSave={save}
           onClose={() => setEditing(null)}
         />
@@ -457,7 +529,7 @@ export default function Bookings() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Gast</th><th>Stellplatz</th><th>Anreise</th><th>Abreise</th>
+                    <th>Nr.</th><th>Gast</th><th>Stellplatz</th><th>Anreise</th><th>Abreise</th>
                     <th>Nächte</th><th>Pers.</th><th>Status</th><th>Zahlung</th>
                     <th>Betrag</th><th></th>
                   </tr>
@@ -465,6 +537,11 @@ export default function Bookings() {
                 <tbody>
                   {filtered.map(b => (
                     <tr key={b.id} onClick={() => navigate('/buchungen/' + b.id)}>
+                      <td>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 12, color: 'var(--text-muted)' }}>
+                          #{b.booking_number || '–'}
+                        </span>
+                      </td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <Avatar name={b.guest_name} size={30} />
@@ -507,6 +584,7 @@ export default function Bookings() {
         <BookingForm
           initial={editing}
           sites={sites}
+          priceLists={priceLists}
           onSave={save}
           onClose={() => { setShowForm(false); setEditing(null) }}
         />

@@ -526,3 +526,13 @@ select.filter-sel {
   .login-right { width: 100%; padding: 40px 24px; }
   .form-row, .form-row-3 { grid-template-columns: 1fr; }
 }
+
+/* ─── Leaflet z-index fix ─────────────────────────────────────────────────── */
+.leaflet-container { z-index: 1; }
+.leaflet-pane      { z-index: 1; }
+.leaflet-top,
+.leaflet-bottom    { z-index: 10; }
+.leaflet-popup-pane { z-index: 20; }
+.leaflet-popup-content p { margin: 0; }
+.leaflet-popup-content-wrapper { border-radius: 10px !important; box-shadow: 0 4px 20px rgba(0,0,0,.15) !important; }
+.leaflet-popup-content { margin: 12px 14px !important; }

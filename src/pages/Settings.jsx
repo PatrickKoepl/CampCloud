@@ -16,15 +16,34 @@ export default function Settings() {
     website:       cg?.website       || '',
     checkin_time:  cg?.checkin_time  || '14:00',
     checkout_time: cg?.checkout_time || '11:00',
+    lat:           cg?.lat           ?? '',
+    lng:           cg?.lng           ?? '',
   })
 
   const [form, setForm] = useState(() => toForm(campground))
 
   useEffect(() => { setForm(toForm(campground)) }, [campground]) // eslint-disable-line
   const [saving, setSaving] = useState(false)
+  const [geocoding, setGeocoding] = useState(false)
   const [toast, setToast]   = useState('')
   const toast$ = (m) => { setToast(m); setTimeout(() => setToast(''), 2800) }
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const geocode = async () => {
+    if (!form.address) { toast$('Bitte zuerst die Adresse eintragen'); return }
+    setGeocoding(true)
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(form.address)}&limit=1`)
+      const data = await res.json()
+      if (data?.[0]) {
+        setForm(f => ({ ...f, lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }))
+        toast$('✓ Koordinaten gefunden: ' + data[0].display_name.slice(0, 60))
+      } else {
+        toast$('⛔ Adresse nicht gefunden — bitte manuell eingeben')
+      }
+    } catch { toast$('⛔ Geocoding fehlgeschlagen') }
+    setGeocoding(false)
+  }
 
   const save = async () => {
     setSaving(true)
@@ -117,6 +136,33 @@ export default function Settings() {
               <div className="form-group">
                 <label className="form-label">Späteste Check-out Zeit</label>
                 <input className="form-input" type="time" value={form.checkout_time} onChange={e => set('checkout_time', e.target.value)} />
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0 18px' }} />
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--green-900)', marginBottom: 6 }}>
+              📍 Platzplan-Position (GPS)
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
+              Wird für den interaktiven Platzplan (OpenStreetMap) benötigt. Automatisch aus der Adresse ermitteln oder manuell eingeben.
+            </div>
+            <div style={{ marginBottom: 10 }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={geocode} disabled={geocoding}>
+                {geocoding ? '🔍 Suche…' : '🔍 Aus Adresse ermitteln'}
+              </button>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Breitengrad (Latitude)</label>
+                <input className="form-input" type="number" step="0.000001"
+                  value={form.lat} onChange={e => set('lat', e.target.value)}
+                  placeholder="z.B. 48.137154" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Längengrad (Longitude)</label>
+                <input className="form-input" type="number" step="0.000001"
+                  value={form.lng} onChange={e => set('lng', e.target.value)}
+                  placeholder="z.B. 11.576124" />
               </div>
             </div>
 
