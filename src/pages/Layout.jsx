@@ -3,20 +3,22 @@ import { useAuth } from '../hooks/useAuth'
 import { Icon, Avatar } from '../components/ui'
 
 const NAV = [
-  { to: '/',         label: 'Dashboard',    icon: 'dashboard' },
-  { to: '/buchungen', label: 'Buchungen',   icon: 'bookings',  badge: true },
+  { to: '/',            label: 'Dashboard',    icon: 'dashboard' },
+  { to: '/zeitplan',    label: 'Zeitplan',     icon: 'calendar' },
+  { to: '/buchungen',   label: 'Buchungen',    icon: 'bookings',  badge: true },
   { to: '/stellplaetze', label: 'Stellplätze', icon: 'sites' },
-  { to: '/gaeste',   label: 'Gäste',        icon: 'guests' },
-  { to: '/preislisten', label: 'Preislisten', icon: 'pricing' },
+  { to: '/gaeste',      label: 'Gäste',        icon: 'guests' },
+  { to: '/rechnungen',  label: 'Rechnungen',   icon: 'invoice' },
+  { to: '/preislisten', label: 'Preislisten',  icon: 'pricing' },
 ]
 
-// BUG FIX: Exact-match würde /buchungen/some-id als "CampCloud" anzeigen.
-// Stattdessen prefix-basierte Auflösung, damit Sub-Routen korrekt angezeigt werden.
 const getTitle = (pathname) => {
   if (pathname === '/' || pathname === '')   return 'Dashboard'
+  if (pathname.startsWith('/zeitplan'))      return 'Zeitplan'
   if (pathname.startsWith('/buchungen'))     return 'Buchungen'
   if (pathname.startsWith('/stellplaetze')) return 'Stellplätze'
   if (pathname.startsWith('/gaeste'))       return 'Gäste'
+  if (pathname.startsWith('/rechnungen'))   return 'Rechnungen'
   if (pathname.startsWith('/preislisten'))  return 'Preislisten'
   if (pathname.startsWith('/einstellungen'))return 'Einstellungen'
   return 'CampCloud'

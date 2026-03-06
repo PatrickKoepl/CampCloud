@@ -198,11 +198,16 @@ export default function Guests() {
             <div className="table-wrapper">
               <table className="data-table">
                 <thead>
-                  <tr><th>Name</th><th>E-Mail</th><th>Telefon</th><th>Adresse</th><th>Besuche</th><th>Letzter Besuch</th><th></th></tr>
+                  <tr><th>Nr.</th><th>Name</th><th>E-Mail</th><th>Telefon</th><th>Adresse</th><th>Besuche</th><th>Letzter Besuch</th><th></th></tr>
                 </thead>
                 <tbody>
                   {filtered.map(g => (
                     <tr key={g.id} onClick={() => setEditing(g)}>
+                      <td>
+                        <span className="badge badge-gray" style={{ fontFamily: 'monospace', fontSize: 12 }}>
+                          #{g.customer_number || '–'}
+                        </span>
+                      </td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <Avatar name={g.name} size={30} />

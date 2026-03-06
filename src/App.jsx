@@ -12,6 +12,8 @@ import Sites        from './pages/Sites'
 import Guests       from './pages/Guests'
 import Pricing      from './pages/Pricing'
 import Settings     from './pages/Settings'
+import Invoices     from './pages/Invoices'
+import Timeline     from './pages/Timeline'
 
 // ─── Protected app ────────────────────────────────────────────────────────────
 function ProtectedApp() {
@@ -63,6 +65,8 @@ function ProtectedApp() {
         <Route path="stellplaetze"  element={<Sites />} />
         <Route path="gaeste"        element={<Guests />} />
         <Route path="preislisten"   element={<Pricing />} />
+        <Route path="rechnungen"    element={<Invoices />} />
+        <Route path="zeitplan"      element={<Timeline />} />
         <Route path="einstellungen" element={<Settings />} />
         <Route path="*"             element={<Navigate to="/" replace />} />
       </Route>
