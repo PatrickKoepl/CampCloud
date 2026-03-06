@@ -345,20 +345,19 @@ export default function Invoices() {
 
                       {/* Rechnungsnr. → Klick öffnet Druckvorschau */}
                       <td>
-                        <button
-                          onClick={() => openPrint(inv)}
-                          disabled={!inv.booking}
-                          title="Rechnung öffnen / drucken"
-                          style={{
-                            fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 13,
-                            color: inv.booking ? 'var(--green-900)' : 'var(--text-muted)',
-                            background: inv.booking ? 'var(--green-100)' : 'var(--bg)',
-                            border: '1px solid ' + (inv.booking ? 'var(--green-200)' : 'var(--border)'),
-                            borderRadius: 6, padding: '3px 9px', cursor: inv.booking ? 'pointer' : 'default',
-                          }}
-                        >
-                          #{inv.invoice_number}
-                        </button>
+                        {inv.booking ? (
+                          <button
+                            onClick={() => openPrint(inv)}
+                            title="Rechnung öffnen / drucken"
+                            style={{
+                              fontWeight: 600, fontSize: 12, color: '#065F46',
+                              background: '#D1FAE5', border: '1px solid #6EE7B7',
+                              borderRadius: 6, padding: '3px 9px', cursor: 'pointer',
+                            }}
+                          >#{inv.invoice_number} ↗</button>
+                        ) : (
+                          <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 600, fontSize: 12, color: 'var(--text-muted)' }}>#{inv.invoice_number}</span>
+                        )}
                       </td>
 
                       <td>

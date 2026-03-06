@@ -81,36 +81,40 @@ const getSvgIcon = (type) => TYPE_ICONS[type] || TYPE_ICONS['Stellplatz']
 
 // ─── Icon-Factories ──────────────────────────────────────────────────────────
 const createSiteIcon = (site, isOpen, hasBooking) => {
-  const cfg = STATUS_COLOR[site.status] || STATUS_COLOR.free
-  const svgIcon = getSvgIcon(site.type)
-  const fs = site.name.length > 4 ? 8 : site.name.length > 3 ? 10 : 11
+  const cfg    = STATUS_COLOR[site.status] || STATUS_COLOR.free
+  const svgSrc = getSvgIcon(site.type)
+  const fs     = site.name.length > 4 ? 8 : site.name.length > 3 ? 10 : 11
+
+  // SVG als data-URL für sauberes Rendering im DivIcon
+  const svgB64 = btoa(unescape(encodeURIComponent(svgSrc)))
+  const imgTag = `<img src="data:image/svg+xml;base64,${svgB64}" width="34" height="22" style="display:block;flex-shrink:0;" />`
 
   return L.divIcon({
     className: '',
-    html: `<div style="position:relative;width:54px;height:54px">
+    html: `<div style="position:relative;width:56px;height:56px">
       <div style="
-        width:54px;height:54px;border-radius:10px;
+        width:56px;height:56px;border-radius:12px;
         background:${cfg.bg};
-        border:3px solid ${isOpen ? '#fff' : cfg.border};
+        border:3px solid #fff;
+        outline:2px solid ${cfg.border};
         box-shadow:${isOpen
-          ? `0 0 0 3px ${cfg.bg},0 4px 16px rgba(0,0,0,.4)`
-          : '0 2px 8px rgba(0,0,0,.28)'};
+          ? `0 0 0 3px ${cfg.bg}, 0 6px 20px rgba(0,0,0,.5)`
+          : '0 3px 10px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.3)'};
         display:flex;flex-direction:column;align-items:center;justify-content:center;
-        gap:1px;cursor:pointer;box-sizing:border-box;overflow:hidden;padding:3px 2px 2px;
+        gap:2px;cursor:pointer;box-sizing:border-box;padding:4px 3px 3px;
       ">
-        <div style="width:34px;height:20px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
-          ${svgIcon}
-        </div>
-        <div style="font-weight:700;color:#fff;font-family:Sora,sans-serif;font-size:${fs}px;
-          line-height:1;text-align:center;word-break:break-all;width:100%;padding:0 2px;">
+        ${imgTag}
+        <div style="font-weight:800;color:#fff;font-family:Sora,sans-serif;font-size:${fs}px;
+          line-height:1;text-align:center;word-break:break-all;width:100%;padding:0 2px;
+          text-shadow:0 1px 2px rgba(0,0,0,.4);">
           ${site.name}
         </div>
       </div>
-      ${hasBooking ? '<div style="position:absolute;top:-4px;right:-4px;width:12px;height:12px;border-radius:50%;background:#EF4444;border:2px solid #fff;"></div>' : ''}
+      ${hasBooking ? '<div style="position:absolute;top:-5px;right:-5px;width:13px;height:13px;border-radius:50%;background:#EF4444;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3);"></div>' : ''}
     </div>`,
-    iconSize: [54, 54],
-    iconAnchor: [27, 27],
-    popupAnchor: [0, -32],
+    iconSize: [56, 56],
+    iconAnchor: [28, 28],
+    popupAnchor: [0, -34],
   })
 }
 

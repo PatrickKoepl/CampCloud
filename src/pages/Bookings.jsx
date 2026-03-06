@@ -7,57 +7,79 @@ import { fmt, fmtDate, nights, STATUS, PAYMENT, validateBookingDates } from '../
 import InvoiceModal, { DunningModal } from '../components/Invoice'
 
 // ─── Form ─────────────────────────────────────────────────────────────────────
+// Zusatzleistungen die manuell hinzugefügt werden können
+const EXTRA_SERVICES = [
+  { key: 'trash',     label: 'Müllgebühr',          unit: '/Nacht', defaultFactor: 'nights' },
+  { key: 'dog',       label: 'Hundpauschale',        unit: '/Nacht', defaultFactor: 'nights' },
+  { key: 'tourist',   label: 'Kurtaxe',              unit: '/Person/Nacht', defaultFactor: 'persons_nights' },
+  { key: 'wood',      label: 'Brennholz',            unit: 'pauschal', defaultFactor: 'flat' },
+  { key: 'wash',      label: 'Waschmaschinen Jeton', unit: 'je Jeton', defaultFactor: 'flat' },
+  { key: 'breakfast', label: 'Frühstück/Person',     unit: '/Person/Tag', defaultFactor: 'persons_nights' },
+  { key: 'other',     label: 'Sonstiges',            unit: 'pauschal', defaultFactor: 'flat' },
+]
+
+function buildLineItems(site, pl, n, persons) {
+  if (!pl || n <= 0) return []
+  const items = []
+  if ((pl.base_price || 0) > 0)
+    items.push({ key: 'base', label: 'Grundpreis Stellplatz', qty: n, unit: '/Nacht', unitPrice: pl.base_price, amount: pl.base_price * n, locked: false })
+  if ((pl.per_person || 0) > 0)
+    items.push({ key: 'person', label: 'Personengebühr', qty: persons * n, unit: 'Pers.×Nacht', unitPrice: pl.per_person, amount: pl.per_person * persons * n, locked: false })
+  if (site?.electric && (pl.electricity || 0) > 0)
+    items.push({ key: 'elec', label: 'Stromgebühr', qty: n, unit: '/Nacht', unitPrice: pl.electricity, amount: pl.electricity * n, locked: false })
+  return items
+}
+
 function BookingForm({ initial, sites, priceLists, onSave, onClose }) {
   const blank = {
     guest_name: '', email: '', site_id: '', site_name: '',
     type: 'Stellplatz', arrival: '', departure: '',
     persons: 2, status: 'confirmed', payment: 'pending', total: 0, notes: '',
+    line_items: null,
   }
-  const [form, setForm]         = useState(initial || blank)
-  const [saving, setSaving]     = useState(false)
-  const [errors, setErrors]     = useState({})
-  const [calcPrice, setCalcPrice] = useState(null) // berechneter Preis aus Preisliste
-  const [priceNote, setPriceNote] = useState('')
+  const [form, setForm]     = useState(initial || blank)
+  const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState({})
+  const [lineItems, setLineItems] = useState([])   // [{ key, label, qty, unit, unitPrice, amount }]
+  const [extras, setExtras]       = useState([])   // zusätzliche manuelle Zeilen
+  const [extraKey, setExtraKey]     = useState('')
+  const [extraPrice, setExtraPrice] = useState('')
 
   const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); setErrors(e => ({ ...e, [k]: null })) }
 
-  // Stellplatz wählen → site_id + site_name + type synchronisieren
   const onSiteChange = (siteId) => {
     const site = sites.find(s => s.id === siteId)
     setForm(f => ({ ...f, site_id: siteId, site_name: site?.name || '', type: site?.type || f.type }))
     setErrors(e => ({ ...e, site_id: null }))
   }
 
-  // ── Auto-Preisberechnung ────────────────────────────────────────────────
+  // Nächte
+  const nightCount = nights(form.arrival, form.departure)
+
+  // ── Preislisten-Positionen aktualisieren ──────────────────────────────────
   useEffect(() => {
     const site = sites.find(s => s.id === form.site_id)
-    const n    = nights(form.arrival, form.departure)
-    if (!site || n <= 0 || !priceLists?.length) { setCalcPrice(null); setPriceNote(''); return }
+    const n    = nightCount
+    if (!site || n <= 0 || !priceLists?.length) { setLineItems([]); return }
 
-    // Passende aktive Preisliste (nach Typ)
     const pl = priceLists.find(p => p.active && p.type === site.type)
-      || priceLists.find(p => p.active) // Fallback: erste aktive
-    if (!pl) { setCalcPrice(null); setPriceNote('Keine passende Preisliste gefunden'); return }
+           || priceLists.find(p => p.active)
+    if (!pl) { setLineItems([]); return }
 
-    const base     = (pl.base_price || 0) * n
-    const perPers  = (pl.per_person || 0) * form.persons * n
-    const elec     = site.electric ? (pl.electricity || 0) * n : 0
-    const total    = Math.round((base + perPers + elec) * 100) / 100
-    setCalcPrice(total)
-    setPriceNote(
-      `${pl.name}: ${n}N × ${fmt(pl.base_price)}` +
-      (pl.per_person > 0 ? ` + ${form.persons} Pers. × ${fmt(pl.per_person)}` : '') +
-      (site.electric && pl.electricity > 0 ? ` + Strom ${fmt(pl.electricity)}` : '') +
-      `/N`
-    )
-  }, [form.site_id, form.arrival, form.departure, form.persons, sites, priceLists])
+    const items = buildLineItems(site, pl, n, form.persons)
+    setLineItems(items)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.site_id, form.arrival, form.departure, form.persons])
 
-  // Berechneten Preis übernehmen
-  const applyCalcPrice = () => {
-    if (calcPrice != null) setForm(f => ({ ...f, total: calcPrice }))
-  }
+  // Gesamtbetrag = Summe aller Positionen
+  useEffect(() => {
+    const all = [...lineItems, ...extras]
+    if (all.length === 0) return
+    const total = Math.round(all.reduce((s, i) => s + Number(i.amount || 0), 0) * 100) / 100
+    setForm(f => ({ ...f, total }))
+  }, [lineItems, extras])
 
-  // Beim Öffnen: site_id aus bestehender Buchung rückwärts ermitteln
+  // Beim Öffnen: site_id rückwärts ermitteln + gespeicherte line_items laden
   useEffect(() => {
     if (initial?.site_id) return
     if (initial?.site_name && sites.length > 0) {
@@ -65,6 +87,27 @@ function BookingForm({ initial, sites, priceLists, onSave, onClose }) {
       if (match) setForm(f => ({ ...f, site_id: match.id }))
     }
   }, [initial, sites]) // eslint-disable-line
+
+  const updateLineAmount = (idx, newAmount) => {
+    setLineItems(prev => prev.map((item, i) => i === idx ? { ...item, amount: +newAmount } : item))
+  }
+  const updateExtraAmount = (idx, newAmount) => {
+    setExtras(prev => prev.map((item, i) => i === idx ? { ...item, amount: +newAmount } : item))
+  }
+  const removeExtra = (idx) => setExtras(prev => prev.filter((_, i) => i !== idx))
+
+  const addExtra = () => {
+    const svc = EXTRA_SERVICES.find(x => x.key === extraKey)
+    const price = parseFloat(extraPrice) || 0
+    if (!svc || price <= 0) return
+    const n = nightCount
+    const p = form.persons
+    const amount = svc.defaultFactor === 'nights'         ? price * n
+                 : svc.defaultFactor === 'persons_nights' ? price * p * n
+                 : price
+    setExtras(prev => [...prev, { key: svc.key + '_' + Date.now(), label: svc.label, qty: 1, unit: svc.unit, unitPrice: price, amount }])
+    setExtraKey(''); setExtraPrice('')
+  }
 
   const validate = () => {
     const errs = {}
@@ -81,16 +124,18 @@ function BookingForm({ initial, sites, priceLists, onSave, onClose }) {
     const errs = validate()
     if (Object.keys(errs).length > 0) { setErrors(errs); return }
     setSaving(true)
-    await onSave(form)
+    const allItems = [...lineItems, ...extras]
+    await onSave({ ...form, line_items: allItems.length > 0 ? allItems : null })
     setSaving(false)
   }
 
-  const nightCount = nights(form.arrival, form.departure)
+  const hasPricing = lineItems.length > 0
 
   return (
     <Modal
       title={initial?.id ? 'Buchung bearbeiten' : 'Neue Buchung'}
       onClose={onClose}
+      size="modal-lg"
       footer={<>
         <button className="btn btn-secondary" onClick={onClose}>Abbrechen</button>
         <button className="btn btn-primary" onClick={handle} disabled={saving}>
@@ -129,7 +174,6 @@ function BookingForm({ initial, sites, priceLists, onSave, onClose }) {
         </div>
       </div>
 
-      {/* Datum */}
       <div className="form-row">
         <div className="form-group">
           <label className="form-label">Anreise <span className="req">*</span></label>
@@ -159,26 +203,6 @@ function BookingForm({ initial, sites, priceLists, onSave, onClose }) {
           {errors.persons && <div className="field-error">{errors.persons}</div>}
         </div>
         <div className="form-group">
-          <label className="form-label">Gesamtbetrag (€)</label>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input className={`form-input ${errors.total ? 'input-error' : ''}`}
-              type="number" min="0" step="0.01" value={form.total}
-              onChange={e => set('total', Math.max(0, +e.target.value))}
-              style={{ flex: 1 }} />
-            {calcPrice != null && (
-              <button type="button" onClick={applyCalcPrice} className="btn btn-secondary btn-sm"
-                title={priceNote} style={{ flexShrink: 0, fontSize: 12 }}>
-                = {fmt(calcPrice)}
-              </button>
-            )}
-          </div>
-          {priceNote && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{priceNote}</div>}
-          {errors.total && <div className="field-error">{errors.total}</div>}
-        </div>
-      </div>
-
-      <div className="form-row">
-        <div className="form-group">
           <label className="form-label">Status</label>
           <select className="form-select" value={form.status} onChange={e => set('status', e.target.value)}>
             {Object.entries(STATUS).map(([v, { label }]) => <option key={v} value={v}>{label}</option>)}
@@ -191,6 +215,91 @@ function BookingForm({ initial, sites, priceLists, onSave, onClose }) {
           </select>
         </div>
       </div>
+
+      {/* ── Kostenpositionen ── */}
+      {hasPricing && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 14 }}>
+          <div style={{ background: '#1B4332', color: '#fff', padding: '8px 14px', fontSize: 12, fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>💰 Kostenpositionen</span>
+            <span style={{ fontSize: 11, opacity: 0.75 }}>Beträge sind editierbar</span>
+          </div>
+
+          {/* Preislisten-Positionen */}
+          {lineItems.map((item, idx) => (
+            <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? '#FAFAFA' : '#fff' }}>
+              <div style={{ flex: 1, fontSize: 13 }}>
+                <span style={{ fontWeight: 500 }}>{item.label}</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: 11, marginLeft: 6 }}>
+                  {item.qty} × {item.unit} × {fmt(item.unitPrice)}
+                </span>
+              </div>
+              <input
+                type="number" min="0" step="0.5"
+                value={item.amount}
+                onChange={e => updateLineAmount(idx, e.target.value)}
+                style={{ width: 90, textAlign: 'right', fontWeight: 600, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }}
+              />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 14 }}>€</span>
+            </div>
+          ))}
+
+          {/* Extras */}
+          {extras.map((item, idx) => (
+            <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderBottom: '1px solid var(--border)', background: '#FFF9F0' }}>
+              <div style={{ flex: 1, fontSize: 13 }}>
+                <span style={{ fontWeight: 500 }}>{item.label}</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: 11, marginLeft: 6 }}>{item.unit}</span>
+              </div>
+              <input
+                type="number" min="0" step="0.5"
+                value={item.amount}
+                onChange={e => updateExtraAmount(idx, e.target.value)}
+                style={{ width: 90, textAlign: 'right', fontWeight: 600, padding: '4px 8px', border: '1px solid #FCD34D', borderRadius: 6, fontSize: 13 }}
+              />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 14 }}>€</span>
+              <button onClick={() => removeExtra(idx)} style={{ width: 22, height: 22, borderRadius: 5, background: '#FEE2E2', border: 'none', color: '#DC2626', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+            </div>
+          ))}
+
+          {/* Zusatzleistung hinzufügen — immer sichtbar */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '8px 14px', borderTop: '1px solid var(--border)', background: '#F8FAFC', flexWrap: 'wrap' }}>
+            <select value={extraKey} onChange={e => setExtraKey(e.target.value)}
+              style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', flex: '1 1 160px' }}>
+              <option value="">+ Zusatzleistung wählen…</option>
+              {EXTRA_SERVICES.map(s => <option key={s.key} value={s.key}>{s.label} ({s.unit})</option>)}
+            </select>
+            <input type="number" min="0" step="0.5" placeholder="€ Einzelpreis"
+              value={extraPrice} onChange={e => setExtraPrice(e.target.value)}
+              style={{ width: 110, fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)' }} />
+            <button type="button" onClick={addExtra} disabled={!extraKey || !extraPrice}
+              style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, border: 'none',
+                background: extraKey && extraPrice ? '#1B4332' : '#E5E7EB',
+                color: extraKey && extraPrice ? '#fff' : '#9CA3AF', cursor: extraKey && extraPrice ? 'pointer' : 'default' }}>
+              Hinzufügen
+            </button>
+          </div>
+
+          {/* Summe */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 14px', background: '#F0FDF4' }}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: '#1B4332' }}>
+              Gesamt: {fmt(form.total)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manueller Gesamtbetrag (wenn keine Preisliste) */}
+      {!hasPricing && (
+        <div className="form-group">
+          <label className="form-label">Gesamtbetrag (€)</label>
+          <input className={`form-input ${errors.total ? 'input-error' : ''}`}
+            type="number" min="0" step="0.01" value={form.total}
+            onChange={e => set('total', Math.max(0, +e.target.value))} />
+          {!form.site_id && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>Stellplatz wählen für automatische Preisberechnung</div>}
+          {errors.total && <div className="field-error">{errors.total}</div>}
+        </div>
+      )}
+
       <div className="form-group">
         <label className="form-label">Notizen</label>
         <textarea className="form-textarea" rows={2} value={form.notes}

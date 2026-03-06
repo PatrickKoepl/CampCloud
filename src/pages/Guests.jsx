@@ -224,7 +224,7 @@ export default function Guests() {
             <div className="table-wrapper">
               <table className="data-table">
                 <thead>
-                  <tr><th>Nr.</th><th>Name</th><th>E-Mail</th><th>Telefon</th><th>Adresse</th><th>Besuche</th><th>Letzter Besuch</th><th></th></tr>
+                  <tr><th>Nr.</th><th>Name</th><th>E-Mail</th><th>Telefon</th><th>Adresse</th><th>Notizen</th><th>Besuche</th><th>Letzter Besuch</th><th></th></tr>
                 </thead>
                 <tbody>
                   {filtered.map(g => (
@@ -243,6 +243,13 @@ export default function Guests() {
                       <td>{g.email || <span style={{ color: 'var(--text-muted)' }}>–</span>}</td>
                       <td>{g.phone || <span style={{ color: 'var(--text-muted)' }}>–</span>}</td>
                       <td style={{ fontSize: 12.5 }}>{g.address || <span style={{ color: 'var(--text-muted)' }}>–</span>}</td>
+                      <td style={{ maxWidth: 200 }}>
+                        {g.notes
+                          ? <span title={g.notes} style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'help' }}>
+                              💬 {g.notes}
+                            </span>
+                          : <span style={{ color: 'var(--text-muted)' }}>–</span>}
+                      </td>
                       <td><span className="badge badge-blue">{g.visits || 0}×</span></td>
                       <td>{g.last_visit ? fmtDate(g.last_visit) : '–'}</td>
                       <td onClick={e => e.stopPropagation()}>

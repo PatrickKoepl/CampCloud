@@ -17,21 +17,32 @@ const BLOCK_LABELS = {
   departures:      'Abreisen heute',
   active_bookings: 'Aktuelle Buchungen',
 }
-const STORAGE_KEY = 'dashboard_layout_v1'
+// Für Stats-Kacheln individuell; für Card-Blöcke als Ganzes
+// sm = kompakt, md = normal, lg = groß
+const DEFAULT_SIZES = { stats: 'md', alerts: 'md', arrivals: 'md', departures: 'md', active_bookings: 'md' }
+const SIZE_LABELS   = { sm: 'S', md: 'M', lg: 'L' }
+const STAT_SIZE_PX  = { sm: 100, md: 140, lg: 190 }  // stat-card width
+const CARD_MAX_H    = { sm: 220, md: 340, lg: 9999 }  // card body max-height
+
+const STORAGE_KEY       = 'dashboard_layout_v1'
+const STORAGE_SIZES_KEY = 'dashboard_sizes_v1'
 
 const loadLayout = () => {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || ALL_BLOCKS } catch { return ALL_BLOCKS }
 }
 const saveLayout = (layout) => localStorage.setItem(STORAGE_KEY, JSON.stringify(layout))
 
+const loadSizes = () => {
+  try { return { ...DEFAULT_SIZES, ...JSON.parse(localStorage.getItem(STORAGE_SIZES_KEY)) } } catch { return DEFAULT_SIZES }
+}
+const saveSizes = (s) => localStorage.setItem(STORAGE_SIZES_KEY, JSON.stringify(s))
+
 // ─── Einzelner Drag-fähiger Block-Wrapper ────────────────────────────────────
-function DraggableBlock({ id, index, total, editMode, onDrop, onRemove, onMove, children }) {
-  const ref       = useRef(null)
-  const handleRef = useRef(null)
+function DraggableBlock({ id, index, total, editMode, size, onDrop, onRemove, onMove, onSizeChange, children }) {
+  const ref        = useRef(null)
   const fromHandle = useRef(false)
   const [dragOver, setDragOver] = useState(false)
 
-  // Nur erlauben wenn Drag vom Handle gestartet wird
   const onMouseDownHandle = () => { fromHandle.current = true }
   const onMouseUp = () => { fromHandle.current = false }
 
@@ -41,14 +52,10 @@ function DraggableBlock({ id, index, total, editMode, onDrop, onRemove, onMove, 
     e.dataTransfer.effectAllowed = 'move'
     setTimeout(() => { if (ref.current) ref.current.style.opacity = '0.45' }, 0)
   }
-  const onDragEnd = () => {
-    fromHandle.current = false
-    if (ref.current) ref.current.style.opacity = '1'
-    setDragOver(false)
-  }
-  const onDragOver = (e) => { e.preventDefault(); setDragOver(true) }
+  const onDragEnd   = () => { fromHandle.current = false; if (ref.current) ref.current.style.opacity = '1'; setDragOver(false) }
+  const onDragOver  = (e) => { e.preventDefault(); setDragOver(true) }
   const onDragLeave = () => setDragOver(false)
-  const onDropHere = (e) => {
+  const onDropHere  = (e) => {
     e.preventDefault(); setDragOver(false)
     const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10)
     if (!isNaN(fromIdx) && fromIdx !== index) onDrop(fromIdx, index)
@@ -56,64 +63,53 @@ function DraggableBlock({ id, index, total, editMode, onDrop, onRemove, onMove, 
 
   if (!editMode) return <div ref={ref}>{children}</div>
 
+  const sizes = ['sm','md','lg']
+
   return (
-    <div
-      ref={ref}
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDropHere}
-      onMouseUp={onMouseUp}
+    <div ref={ref} draggable onDragStart={onDragStart} onDragEnd={onDragEnd}
+      onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDropHere} onMouseUp={onMouseUp}
       style={{
         position: 'relative',
         outline: dragOver ? '2px solid #2D6A4F' : '2px dashed #B7E4C7',
-        outlineOffset: 2,
-        borderRadius: 14,
+        outlineOffset: 2, borderRadius: 14,
         background: dragOver ? 'rgba(27,67,50,0.04)' : 'transparent',
         transition: 'outline-color .15s, background .15s',
       }}
     >
       {/* ── Handle-Leiste ── */}
-      <div
-        ref={handleRef}
-        onMouseDown={onMouseDownHandle}
-        style={{
-          position: 'absolute', top: 0, left: 0, right: 0, height: 36, zIndex: 10,
-          background: 'linear-gradient(135deg,#1B4332,#2D6A4F)',
-          borderRadius: '12px 12px 0 0',
-          display: 'flex', alignItems: 'center',
-          padding: '0 10px', gap: 8, cursor: 'grab',
-          userSelect: 'none',
-        }}
+      <div onMouseDown={onMouseDownHandle}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 36, zIndex: 10,
+          background: 'linear-gradient(135deg,#1B4332,#2D6A4F)', borderRadius: '12px 12px 0 0',
+          display: 'flex', alignItems: 'center', padding: '0 10px', gap: 6, cursor: 'grab', userSelect: 'none' }}
       >
         <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', letterSpacing: 1 }}>⠿</span>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.85)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {BLOCK_LABELS[id]}
         </span>
-        {/* ↑↓ Buttons */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onMove(index, index - 1) }}
-          disabled={index === 0}
-          style={{ width: 24, height: 24, borderRadius: 5, border: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', cursor: index === 0 ? 'not-allowed' : 'pointer', opacity: index === 0 ? 0.35 : 1, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          title="Nach oben"
-        >↑</button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onMove(index, index + 1) }}
-          disabled={index === total - 1}
-          style={{ width: 24, height: 24, borderRadius: 5, border: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', cursor: index === total - 1 ? 'not-allowed' : 'pointer', opacity: index === total - 1 ? 0.35 : 1, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          title="Nach unten"
-        >↓</button>
-        {/* Löschen-Button */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onRemove(id) }}
-          style={{ width: 24, height: 24, borderRadius: 5, border: 'none', background: '#EF4444', color: '#fff', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}
-          title={`„${BLOCK_LABELS[id]}" ausblenden`}
-        >✕</button>
+        {/* Größen-Picker S/M/L */}
+        <div style={{ display: 'flex', gap: 3, marginRight: 4 }}>
+          {sizes.map(s => (
+            <button key={s} onClick={e => { e.stopPropagation(); onSizeChange(id, s) }}
+              style={{ width: 22, height: 22, borderRadius: 5, border: 'none', fontWeight: 700, fontSize: 10,
+                cursor: 'pointer', transition: 'all .1s',
+                background: size === s ? '#fff' : 'rgba(255,255,255,0.18)',
+                color: size === s ? '#1B4332' : '#fff',
+              }}>{SIZE_LABELS[s]}</button>
+          ))}
+        </div>
+        {/* ↑↓ */}
+        {[['↑', -1], ['↓', +1]].map(([lbl, dir]) => (
+          <button key={lbl} onClick={e => { e.stopPropagation(); onMove(index, index + dir) }}
+            disabled={dir < 0 ? index === 0 : index === total - 1}
+            style={{ width: 24, height: 24, borderRadius: 5, border: 'none', background: 'rgba(255,255,255,0.15)',
+              color: '#fff', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              opacity: (dir < 0 ? index === 0 : index === total - 1) ? 0.3 : 1 }}>{lbl}</button>
+        ))}
+        {/* Entfernen */}
+        <button onClick={e => { e.stopPropagation(); onRemove(id) }}
+          style={{ width: 24, height: 24, borderRadius: 5, border: 'none', background: '#EF4444', color: '#fff',
+            fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>✕</button>
       </div>
-
-      {/* Content mit Abstand zur Handle-Leiste */}
       <div style={{ paddingTop: 36 }}>{children}</div>
     </div>
   )
@@ -129,6 +125,7 @@ export default function Dashboard() {
   const [birthdayModal, setBirthdayModal] = useState(null)
   const [editMode, setEditMode]   = useState(false)
   const [layout, setLayout]       = useState(loadLayout)
+  const [sizes, setSizes]         = useState(loadSizes)
   const todayStr = new Date().toISOString().slice(0, 10)
 
   useEffect(() => { if (campground) load() }, [campground]) // eslint-disable-line
@@ -181,7 +178,14 @@ export default function Dashboard() {
     })
   }
 
-  const resetLayout = () => { saveLayout(ALL_BLOCKS); setLayout(ALL_BLOCKS) }
+  const handleSizeChange = useCallback((id, sz) => {
+    setSizes(prev => { const next = { ...prev, [id]: sz }; saveSizes(next); return next })
+  }, [])
+
+  const resetLayout = () => {
+    saveLayout(ALL_BLOCKS); setLayout(ALL_BLOCKS)
+    saveSizes(DEFAULT_SIZES); setSizes(DEFAULT_SIZES)
+  }
 
   if (loading || !data) return <div className="page" style={{ paddingTop: 60 }}><Spinner /></div>
 
@@ -233,20 +237,26 @@ export default function Dashboard() {
 
   // ─── Block-Renderer ────────────────────────────────────────────────────────
   const renderBlock = (id, index) => {
+    const sz   = sizes[id] || 'md'
     const wrap = (content) => (
-      <DraggableBlock key={id} id={id} index={index} total={layout.length} editMode={editMode} onDrop={handleDrop} onRemove={handleRemove} onMove={handleMove}>
+      <DraggableBlock key={id} id={id} index={index} total={layout.length}
+        editMode={editMode} size={sz}
+        onDrop={handleDrop} onRemove={handleRemove} onMove={handleMove} onSizeChange={handleSizeChange}>
         {content}
       </DraggableBlock>
     )
 
     if (id === 'stats') return wrap(
-      <div className="stats-grid">
+      <div className="stats-grid" style={{
+        gridTemplateColumns: `repeat(auto-fill, minmax(${STAT_SIZE_PX[sz]}px, 1fr))`,
+      }}>
         {stats.map(s => (
           <div className="stat-card" key={s.label}>
-            <div className="stat-icon" style={{ background: s.bg, color: s.ic }}><Icon name={s.icon} size={17} /></div>
-            <div className="stat-label">{s.label}</div>
-            <div className="stat-value" style={{ fontSize: s.small ? '20px' : undefined }}>{s.value}</div>
-            <div className="stat-sub">{s.sub}</div>
+            <div className="stat-icon" style={{ background: s.bg, color: s.ic }}><Icon name={s.icon} size={sz === 'sm' ? 14 : 17} /></div>
+            {sz !== 'sm' && <div className="stat-label">{s.label}</div>}
+            <div className="stat-value" style={{ fontSize: sz === 'lg' ? '30px' : sz === 'sm' ? '16px' : (s.small ? '20px' : undefined) }}>{s.value}</div>
+            {sz !== 'sm' && <div className="stat-sub">{s.sub}</div>}
+            {sz === 'sm' && <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center', marginTop: 2 }}>{s.label.split(' ')[0]}</div>}
           </div>
         ))}
       </div>
@@ -254,6 +264,7 @@ export default function Dashboard() {
 
     if (id === 'alerts') {
       if (!editMode && overdue.length === 0 && birthdayGuests.length === 0) return null
+      const maxH = CARD_MAX_H[sz]
       return wrap(
         <div className="grid-2">
           {(overdue.length > 0 || editMode) && (
@@ -262,24 +273,24 @@ export default function Dashboard() {
                 <div className="card-title">⚠️ Offene Zahlungen</div>
                 <span className="badge badge-amber">{overdue.length}</span>
               </div>
-              <div style={{ padding: '0 20px' }}>
+              <div style={{ padding: '0 20px', maxHeight: maxH, overflowY: 'auto' }}>
                 {overdue.length === 0
                   ? <div className="empty-state" style={{ padding: 24 }}><p style={{ fontSize: 13 }}>Keine offenen Zahlungen</p></div>
-                  : overdue.slice(0, 5).map(b => {
+                  : overdue.slice(0, sz === 'sm' ? 2 : sz === 'md' ? 5 : 20).map(b => {
                     const days = Math.floor((Date.now() - new Date(b.created_at)) / 86400000)
                     return (
                       <div className="arrival-row" key={b.id} style={{ cursor: 'pointer' }} onClick={() => navigate('/buchungen/' + b.id)}>
-                        <Avatar name={b.guest_name} size={34} />
+                        <Avatar name={b.guest_name} size={sz === 'sm' ? 26 : 34} />
                         <div className="arrival-info">
                           <div className="arrival-name">{b.guest_name}</div>
-                          <div className="arrival-detail">Platz {b.site_name} · {days} Tage offen</div>
+                          {sz !== 'sm' && <div className="arrival-detail">Platz {b.site_name} · {days} Tage offen</div>}
                         </div>
                         <div className="arrival-meta">
                           <div className="amount" style={{ color: '#92400E' }}>{fmt(b.total)}</div>
-                          <button className="btn btn-secondary btn-sm" style={{ marginTop: 4 }}
+                          {sz !== 'sm' && <button className="btn btn-secondary btn-sm" style={{ marginTop: 4 }}
                             onClick={e => { e.stopPropagation(); setDunningModal(b) }}>
                             <Icon name="mail" size={12} /> Mahnung
-                          </button>
+                          </button>}
                         </div>
                       </div>
                     )
@@ -293,24 +304,24 @@ export default function Dashboard() {
                 <div className="card-title">🎂 Geburtstage</div>
                 <span className="badge" style={{ background: '#FCE7F3', color: '#9D174D' }}>{birthdayGuests.length}</span>
               </div>
-              <div style={{ padding: '0 20px' }}>
+              <div style={{ padding: '0 20px', maxHeight: maxH, overflowY: 'auto' }}>
                 {birthdayGuests.length === 0
                   ? <div className="empty-state" style={{ padding: 24 }}><p style={{ fontSize: 13 }}>Keine Geburtstage bald</p></div>
-                  : birthdayGuests.map(g => (
+                  : birthdayGuests.slice(0, sz === 'sm' ? 2 : 20).map(g => (
                     <div className="arrival-row" key={g.id}>
-                      <Avatar name={g.name} size={34} />
+                      <Avatar name={g.name} size={sz === 'sm' ? 26 : 34} />
                       <div className="arrival-info">
                         <div className="arrival-name">{g.name}</div>
-                        <div className="arrival-detail">
+                        {sz !== 'sm' && <div className="arrival-detail">
                           {g.isToday ? '🎉 Heute!' : `In ${g.daysUntil} Tag${g.daysUntil !== 1 ? 'en' : ''}`}
                           {g.birth_date && ` · ${new Date(g.birth_date).toLocaleDateString('de-DE', { day: 'numeric', month: 'long' })}`}
-                        </div>
+                        </div>}
                       </div>
-                      <div className="arrival-meta">
+                      {sz !== 'sm' && <div className="arrival-meta">
                         <button className="btn btn-secondary btn-sm" onClick={() => setBirthdayModal(g)}>
                           <Icon name="mail" size={12} /> Glückwunsch
                         </button>
-                      </div>
+                      </div>}
                     </div>
                   ))}
               </div>
@@ -326,15 +337,15 @@ export default function Dashboard() {
           <div className="card-title">✈️ Anreisen heute</div>
           <span className="badge badge-green">{todayArrivals.length}</span>
         </div>
-        <div style={{ padding: '0 20px' }}>
+        <div style={{ padding: '0 20px', maxHeight: CARD_MAX_H[sz], overflowY: 'auto' }}>
           {todayArrivals.length === 0
-            ? <div className="empty-state" style={{ padding: 32 }}><p>Keine Anreisen heute</p></div>
-            : todayArrivals.map(b => (
+            ? <div className="empty-state" style={{ padding: sz === 'sm' ? 16 : 32 }}><p>Keine Anreisen heute</p></div>
+            : todayArrivals.slice(0, sz === 'sm' ? 2 : 99).map(b => (
               <div className="arrival-row" key={b.id} onClick={() => navigate('/buchungen/' + b.id)} style={{ cursor: 'pointer' }}>
-                <Avatar name={b.guest_name} size={34} />
+                <Avatar name={b.guest_name} size={sz === 'sm' ? 26 : 34} />
                 <div className="arrival-info">
                   <div className="arrival-name">{b.guest_name}</div>
-                  <div className="arrival-detail">Platz {b.site_name} · {b.persons} Pers. · {nights(b.arrival, b.departure)} Nächte</div>
+                  {sz !== 'sm' && <div className="arrival-detail">Platz {b.site_name} · {b.persons} Pers. · {nights(b.arrival, b.departure)} Nächte</div>}
                 </div>
                 <div className="arrival-meta">
                   <span className={`badge ${PAYMENT[b.payment]?.cls}`}>{PAYMENT[b.payment]?.label}</span>
@@ -351,19 +362,19 @@ export default function Dashboard() {
           <div className="card-title">🏠 Abreisen heute</div>
           <span className="badge badge-amber">{todayDepartures.length}</span>
         </div>
-        <div style={{ padding: '0 20px' }}>
+        <div style={{ padding: '0 20px', maxHeight: CARD_MAX_H[sz], overflowY: 'auto' }}>
           {todayDepartures.length === 0
-            ? <div className="empty-state" style={{ padding: 32 }}><p>Keine Abreisen heute</p></div>
-            : todayDepartures.map(b => (
+            ? <div className="empty-state" style={{ padding: sz === 'sm' ? 16 : 32 }}><p>Keine Abreisen heute</p></div>
+            : todayDepartures.slice(0, sz === 'sm' ? 2 : 99).map(b => (
               <div className="arrival-row" key={b.id} onClick={() => navigate('/buchungen/' + b.id)} style={{ cursor: 'pointer' }}>
-                <Avatar name={b.guest_name} size={34} />
+                <Avatar name={b.guest_name} size={sz === 'sm' ? 26 : 34} />
                 <div className="arrival-info">
                   <div className="arrival-name">{b.guest_name}</div>
-                  <div className="arrival-detail">Platz {b.site_name} · {nights(b.arrival, b.departure)} Nächte</div>
+                  {sz !== 'sm' && <div className="arrival-detail">Platz {b.site_name} · {nights(b.arrival, b.departure)} Nächte</div>}
                 </div>
                 <div className="arrival-meta">
                   <span className={`badge ${STATUS[b.status]?.cls}`}>{STATUS[b.status]?.label}</span>
-                  <div className="amount">{fmt(b.total)}</div>
+                  {sz !== 'sm' && <div className="amount">{fmt(b.total)}</div>}
                 </div>
               </div>
             ))}
@@ -377,19 +388,19 @@ export default function Dashboard() {
           <div className="card-title">Aktuelle Buchungen</div>
           <span className="badge badge-blue">{activeBookings.length}</span>
         </div>
-        <div style={{ padding: '0 20px' }}>
+        <div style={{ padding: '0 20px', maxHeight: CARD_MAX_H[sz], overflowY: 'auto' }}>
           {activeBookings.length === 0
             ? <div className="empty-state" style={{ padding: 32 }}><p>Keine aktiven Buchungen</p></div>
-            : activeBookings.slice(0, 6).map(b => (
+            : activeBookings.slice(0, sz === 'sm' ? 3 : sz === 'md' ? 6 : 99).map(b => (
               <div className="arrival-row" key={b.id} onClick={() => navigate('/buchungen/' + b.id)} style={{ cursor: 'pointer' }}>
-                <Avatar name={b.guest_name} size={34} />
+                <Avatar name={b.guest_name} size={sz === 'sm' ? 26 : 34} />
                 <div className="arrival-info">
                   <div className="arrival-name">{b.guest_name}</div>
-                  <div className="arrival-detail">{b.site_name} · {fmtDate(b.arrival)} – {fmtDate(b.departure)}</div>
+                  {sz !== 'sm' && <div className="arrival-detail">{b.site_name} · {fmtDate(b.arrival)} – {fmtDate(b.departure)}</div>}
                 </div>
                 <div className="arrival-meta">
                   <span className={`badge ${STATUS[b.status]?.cls}`}>{STATUS[b.status]?.label}</span>
-                  <div className="amount">{fmt(b.total)}</div>
+                  {sz !== 'sm' && <div className="amount">{fmt(b.total)}</div>}
                 </div>
               </div>
             ))}
