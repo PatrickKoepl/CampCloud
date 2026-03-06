@@ -56,12 +56,21 @@ function printInvoice(id) {
   setTimeout(() => { w.print(); w.close() }, 400)
 }
 
-export default function InvoiceModal({ booking, campground, onClose }) {
-  const invoiceId   = 'inv-' + booking.id.slice(0, 8)
-  const invoiceNum  = 'RE-' + booking.id.slice(0, 8).toUpperCase()
-  const nightCount  = nights(booking.arrival, booking.departure)
-  const today       = new Date().toLocaleDateString('de-DE')
-  const dueDate     = new Date(Date.now() + 14 * 86400000).toLocaleDateString('de-DE')
+export default function InvoiceModal({ booking, campground, lineItems, invoiceNumber, onClose }) {
+  const invNum     = invoiceNumber ? `RE-${String(invoiceNumber).padStart(4, '0')}` : 'RE-' + booking.id.slice(0, 8).toUpperCase()
+  const nightCount = nights(booking.arrival, booking.departure)
+  const today      = new Date().toLocaleDateString('de-DE')
+  const dueDate    = new Date(Date.now() + 14 * 86400000).toLocaleDateString('de-DE')
+
+  // Zeilen entweder aus lineItems-Prop oder eine Fallback-Zeile
+  const rows = lineItems && lineItems.length > 0
+    ? lineItems
+    : [{ label: `${booking.type || 'Stellplatz'} – Platz ${booking.site_name}`, detail: `${nightCount} Nächte, ${booking.persons} Person(en)`, amount: Number(booking.total) }]
+
+  const subtotal  = rows.reduce((s, r) => s + r.amount, 0)
+  const mwst      = subtotal / 1.07 * 0.07
+  const netto     = subtotal - mwst
+  const fmtE      = (v) => Number(v).toFixed(2).replace('.', ',') + ' €'
 
   const payBadge = booking.payment === 'paid'
     ? '<span class="badge badge-paid">Bezahlt</span>'
@@ -69,18 +78,12 @@ export default function InvoiceModal({ booking, campground, onClose }) {
     ? '<span class="badge badge-partial">Teilzahlung</span>'
     : '<span class="badge badge-pending">Offen</span>'
 
-  const mailtoSubject = encodeURIComponent(`Rechnung ${invoiceNum} – ${campground?.name || 'Campingplatz'}`)
-  const mailtoBody = encodeURIComponent(
-    `Sehr geehrte/r ${booking.guest_name},\n\n` +
-    `vielen Dank für Ihren Aufenthalt bei uns!\n\n` +
-    `Im Anhang finden Sie Ihre Rechnung:\n` +
-    `Rechnungsnummer: ${invoiceNum}\n` +
-    `Zeitraum: ${fmtDate(booking.arrival)} – ${fmtDate(booking.departure)} (${nightCount} Nächte)\n` +
-    `Stellplatz: ${booking.site_name}\n` +
-    `Gesamtbetrag: ${Number(booking.total).toFixed(2).replace('.', ',')} €\n\n` +
-    `Mit freundlichen Grüßen\n${campground?.name || 'Campingplatz'}\n${campground?.phone || ''}\n${campground?.email || ''}`
-  )
-  const mailtoHref = `mailto:${booking.email || ''}?subject=${mailtoSubject}&body=${mailtoBody}`
+  const rowsHTML = rows.map(r => `
+    <tr>
+      <td>${r.label}${r.detail ? `<br/><span style="color:#888;font-size:11px">${r.detail}</span>` : ''}</td>
+      <td style="text-align:right;font-weight:600">${fmtE(r.amount)}</td>
+    </tr>
+  `).join('')
 
   const invoiceHTML = `
     <div class="inv">
@@ -97,7 +100,7 @@ export default function InvoiceModal({ booking, campground, onClose }) {
         <div style="text-align:right">
           <div style="font-size:24px;font-weight:800;color:#1B4332;margin-bottom:6px">RECHNUNG</div>
           <div style="font-size:12px;color:#555;line-height:1.8">
-            Nr.: <strong>${invoiceNum}</strong><br/>
+            Nr.: <strong>${invNum}</strong><br/>
             Datum: ${today}<br/>
             Fällig: ${dueDate}<br/>
             ${payBadge}
@@ -125,31 +128,38 @@ export default function InvoiceModal({ booking, campground, onClose }) {
           <tr><th>Position</th><th style="text-align:right">Betrag</th></tr>
         </thead>
         <tbody>
-          <tr>
-            <td>${booking.type} – Platz ${booking.site_name}<br/><span style="color:#888;font-size:11px">${fmtDate(booking.arrival)} bis ${fmtDate(booking.departure)}, ${nightCount} Nächte, ${booking.persons} Person(en)</span></td>
-            <td style="text-align:right;font-weight:600">${Number(booking.total).toFixed(2).replace('.', ',')} €</td>
-          </tr>
+          ${rowsHTML}
           ${booking.notes ? `<tr><td colspan="2" style="color:#888;font-size:11.5px;font-style:italic">Hinweis: ${booking.notes}</td></tr>` : ''}
         </tbody>
       </table>
 
       <div class="total-box">
         <table>
-          <tr><td>Nettobetrag</td><td style="text-align:right">${(Number(booking.total) / 1.07).toFixed(2).replace('.', ',')} €</td></tr>
-          <tr><td>MwSt. 7%</td><td style="text-align:right">${(Number(booking.total) - Number(booking.total) / 1.07).toFixed(2).replace('.', ',')} €</td></tr>
-          <tr class="total-row"><td><strong>Gesamt</strong></td><td style="text-align:right"><strong>${Number(booking.total).toFixed(2).replace('.', ',')} €</strong></td></tr>
+          <tr><td>Nettobetrag</td><td style="text-align:right">${fmtE(netto)}</td></tr>
+          <tr><td>MwSt. 7%</td><td style="text-align:right">${fmtE(mwst)}</td></tr>
+          <tr class="total-row"><td><strong>Gesamt</strong></td><td style="text-align:right"><strong>${fmtE(subtotal)}</strong></td></tr>
         </table>
       </div>
 
       <div class="footer">
         ${campground?.name || ''} · ${campground?.address || ''} · ${campground?.phone || ''} · ${campground?.email || ''}<br/>
-        Bitte überweisen Sie den Betrag innerhalb von 14 Tagen auf unser Konto oder bezahlen Sie direkt vor Ort. Kurtaxe entfällt.
+        Bitte überweisen Sie den Betrag innerhalb von 14 Tagen auf unser Konto oder bezahlen Sie direkt vor Ort.
       </div>
     </div>
   `
 
+  const mailtoSubject = encodeURIComponent(`Rechnung ${invNum} – ${campground?.name || 'Campingplatz'}`)
+  const mailtoBody = encodeURIComponent(
+    `Sehr geehrte/r ${booking.guest_name},\n\n` +
+    `vielen Dank für Ihren Aufenthalt!\n\nRechnungsnummer: ${invNum}\n` +
+    `Zeitraum: ${fmtDate(booking.arrival)} – ${fmtDate(booking.departure)} (${nightCount} Nächte)\n` +
+    `Stellplatz: ${booking.site_name}\nGesamtbetrag: ${fmtE(subtotal)}\n\n` +
+    `Mit freundlichen Grüßen\n${campground?.name || ''}\n${campground?.phone || ''}\n${campground?.email || ''}`
+  )
+  const mailtoHref = `mailto:${booking.email || ''}?subject=${mailtoSubject}&body=${mailtoBody}`
+
   return (
-    <Modal title={`Rechnung ${invoiceNum}`} onClose={onClose} size="modal-lg"
+    <Modal title={`Rechnung ${invNum}`} onClose={onClose} size="modal-lg"
       footer={<>
         <button className="btn btn-secondary" onClick={onClose}>Schließen</button>
         {booking.email && (
@@ -158,19 +168,15 @@ export default function InvoiceModal({ booking, campground, onClose }) {
           </a>
         )}
         <button className="btn btn-primary" onClick={() => printInvoice('invoice-print-area')}>
-          <Icon name="invoice" size={14} /> Drucken / Als PDF speichern
+          <Icon name="invoice" size={14} /> Drucken / Als PDF
         </button>
       </>}
     >
-      {/* Unsichtbarer Druckbereich */}
       <div id="invoice-print-area" style={{ display: 'none' }} dangerouslySetInnerHTML={{ __html: invoiceHTML }} />
 
-      {/* Vorschau */}
-      <div style={{
-        background: '#FAFAFA', border: '1px solid var(--border)',
-        borderRadius: 8, padding: '28px 32px', fontFamily: 'sans-serif',
-        fontSize: 13, lineHeight: 1.6,
-      }}>
+      {/* ── Vorschau ── */}
+      <div style={{ background: '#FAFAFA', border: '1px solid var(--border)', borderRadius: 8, padding: '28px 32px', fontFamily: 'sans-serif', fontSize: 13, lineHeight: 1.6 }}>
+
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 28 }}>
           <div>
@@ -182,7 +188,7 @@ export default function InvoiceModal({ booking, campground, onClose }) {
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 20, fontWeight: 800, color: '#1B4332', marginBottom: 6 }}>RECHNUNG</div>
             <div style={{ fontSize: 12, color: '#777', lineHeight: 1.9 }}>
-              Nr.: <strong>{invoiceNum}</strong><br />
+              Nr.: <strong>{invNum}</strong><br />
               Datum: {today}<br />
               Fällig bis: {dueDate}
             </div>
@@ -209,41 +215,47 @@ export default function InvoiceModal({ booking, campground, onClose }) {
           ))}
         </div>
 
-        {/* Tabelle */}
+        {/* ── Positionstabelle ── */}
         <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16 }}>
           <thead>
             <tr style={{ background: '#1B4332', color: '#fff' }}>
               <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, textTransform: 'uppercase' }}>Position</th>
-              <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: 11, textTransform: 'uppercase' }}>Betrag</th>
+              <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: 11, textTransform: 'uppercase', width: 110 }}>Betrag</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td style={{ padding: '10px 12px', borderBottom: '1px solid #eee' }}>
-                <div style={{ fontWeight: 500 }}>{booking.type} – Platz {booking.site_name}</div>
-                <div style={{ fontSize: 11.5, color: '#888' }}>{fmtDate(booking.arrival)} – {fmtDate(booking.departure)}, {nightCount} Nächte, {booking.persons} Person(en)</div>
-              </td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, borderBottom: '1px solid #eee' }}>
-                {Number(booking.total).toFixed(2).replace('.', ',')} €
-              </td>
-            </tr>
+            {rows.map((r, i) => (
+              <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                <td style={{ padding: '10px 12px' }}>
+                  <div style={{ fontWeight: 500 }}>{r.label}</div>
+                  {r.detail && <div style={{ fontSize: 11.5, color: '#888', marginTop: 2 }}>{r.detail}</div>}
+                </td>
+                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>
+                  {fmtE(r.amount)}
+                </td>
+              </tr>
+            ))}
+            {booking.notes && (
+              <tr>
+                <td colSpan={2} style={{ padding: '8px 12px', color: '#888', fontSize: 11.5, fontStyle: 'italic' }}>
+                  Hinweis: {booking.notes}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
 
         {/* Summe */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
           <div style={{ width: 260 }}>
-            {[
-              ['Nettobetrag', (Number(booking.total) / 1.07).toFixed(2).replace('.', ',') + ' €'],
-              ['MwSt. 7%', (Number(booking.total) - Number(booking.total) / 1.07).toFixed(2).replace('.', ',') + ' €'],
-            ].map(([l, v]) => (
+            {[['Nettobetrag', fmtE(netto)], ['MwSt. 7%', fmtE(mwst)]].map(([l, v]) => (
               <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, color: '#555' }}>
                 <span>{l}</span><span>{v}</span>
               </div>
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0 4px', borderTop: '2px solid #1B4332', fontWeight: 700, fontSize: 16, color: '#1B4332' }}>
               <span>Gesamt</span>
-              <span>{Number(booking.total).toFixed(2).replace('.', ',')} €</span>
+              <span>{fmtE(subtotal)}</span>
             </div>
           </div>
         </div>
@@ -251,7 +263,7 @@ export default function InvoiceModal({ booking, campground, onClose }) {
         {/* Footer */}
         <div style={{ borderTop: '1px solid #eee', paddingTop: 14, fontSize: 11, color: '#888', textAlign: 'center', lineHeight: 1.8 }}>
           {campground?.name} · {campground?.address}<br />
-          Bitte überweisen Sie den Betrag innerhalb von 14 Tagen. Kurtaxe entfällt.
+          Bitte überweisen Sie den Betrag innerhalb von 14 Tagen. Vielen Dank für Ihren Aufenthalt!
         </div>
       </div>
     </Modal>

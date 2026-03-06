@@ -407,39 +407,44 @@ export default function CampMap({
             })}
 
             {/* Symbol-Marker */}
-            {mapSymbols.map(sym => (
-              <Marker
-                key={sym.id}
-                position={[sym.lat, sym.lng]}
-                icon={createSymbolIcon(sym.symbol_type)}
-                draggable={editMode && mode === 'symbols'}
-                eventHandlers={{
-                  dragend: async (e) => {
-                    const { lat, lng } = e.target.getLatLng()
-                    await supabase.from('map_symbols').update({ lat, lng }).eq('id', sym.id)
-                  },
-                  contextmenu: async () => {
-                    if (!editMode) return
-                    const def = SYMBOL_MAP[sym.symbol_type] || { label: sym.symbol_type }
-                    if (window.confirm(`Symbol „${def.label}" entfernen?`)) await deleteSymbol(sym.id)
-                  },
-                }}
-              >
-                <Popup closeButton={false} minWidth={120}>
-                  <div style={{ textAlign: 'center', padding: '4px 0' }}>
-                    <div style={{ fontSize: 28 }}>{SYMBOL_MAP[sym.symbol_type]?.emoji}</div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{SYMBOL_MAP[sym.symbol_type]?.label}</div>
-                    {editMode && (
-                      <button onClick={() => deleteSymbol(sym.id)} style={{
-                        marginTop: 8, fontSize: 11, color: '#991B1B',
-                        background: '#FEF2F2', border: '1px solid #FECACA',
-                        borderRadius: 5, padding: '3px 10px', cursor: 'pointer',
-                      }}>Entfernen</button>
-                    )}
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
+            {mapSymbols.map(sym => {
+              const def = SYMBOL_MAP[sym.symbol_type] || { emoji: '❓', label: sym.symbol_type }
+              return (
+                <Marker
+                  key={sym.id}
+                  position={[sym.lat, sym.lng]}
+                  icon={createSymbolIcon(sym.symbol_type)}
+                  draggable={editMode && mode === 'symbols'}
+                  eventHandlers={{
+                    dragend: async (e) => {
+                      const { lat, lng } = e.target.getLatLng()
+                      await supabase.from('map_symbols').update({ lat, lng }).eq('id', sym.id)
+                      // kein loadSymbols nötig — Position nur DB-seitig aktualisieren
+                    },
+                  }}
+                >
+                  <Popup closeButton minWidth={140}>
+                    <div style={{ textAlign: 'center', padding: '6px 4px' }}>
+                      <div style={{ fontSize: 30, marginBottom: 4 }}>{def.emoji}</div>
+                      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>{def.label}</div>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          await deleteSymbol(sym.id)
+                        }}
+                        style={{
+                          width: '100%', padding: '6px 10px', fontSize: 12, cursor: 'pointer',
+                          background: '#FEF2F2', border: '1px solid #FECACA',
+                          borderRadius: 6, color: '#991B1B', fontWeight: 600,
+                        }}
+                      >
+                        🗑 Entfernen
+                      </button>
+                    </div>
+                  </Popup>
+                </Marker>
+              )
+            })}
           </MapContainer>
         </div>
 

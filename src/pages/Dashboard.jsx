@@ -84,7 +84,10 @@ export default function Dashboard() {
       sub: `${fmt(pending)} ausstehend`,
       bg: '#FEF3C7', ic: '#92400E', icon: 'pricing', small: true },
     { label: 'Anreisen heute', value: todayArrivals.length,
-      sub: `${todayDepartures.length} Abreise${todayDepartures.length !== 1 ? 'n' : ''} heute`,
+      sub: 'Heute erwartet',
+      bg: '#D8F3DC', ic: '#2D6A4F', icon: 'calendar' },
+    { label: 'Abreisen heute', value: todayDepartures.length,
+      sub: 'Heute abreisend',
       bg: '#FCE7F3', ic: '#9D174D', icon: 'calendar' },
   ]
 
@@ -185,11 +188,11 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Anreisen + Buchungen */}
+      {/* Anreisen + Abreisen + Buchungen */}
       <div className="grid-2">
         <div className="card">
           <div className="card-header">
-            <div className="card-title">Anreisen heute</div>
+            <div className="card-title">✈️ Anreisen heute</div>
             <span className="badge badge-green">{todayArrivals.length}</span>
           </div>
           <div style={{ padding: '0 20px' }}>
@@ -210,6 +213,32 @@ export default function Dashboard() {
           </div>
         </div>
 
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">🏠 Abreisen heute</div>
+            <span className="badge badge-amber">{todayDepartures.length}</span>
+          </div>
+          <div style={{ padding: '0 20px' }}>
+            {todayDepartures.length === 0
+              ? <div className="empty-state" style={{ padding: 32 }}><p>Keine Abreisen heute</p></div>
+              : todayDepartures.map(b => (
+                <div className="arrival-row" key={b.id} onClick={() => navigate('/buchungen/' + b.id)} style={{ cursor: 'pointer' }}>
+                  <Avatar name={b.guest_name} size={34} />
+                  <div className="arrival-info">
+                    <div className="arrival-name">{b.guest_name}</div>
+                    <div className="arrival-detail">Platz {b.site_name} · {nights(b.arrival, b.departure)} Nächte</div>
+                  </div>
+                  <div className="arrival-meta">
+                    <span className={`badge ${STATUS[b.status]?.cls}`}>{STATUS[b.status]?.label}</span>
+                    <div className="amount">{fmt(b.total)}</div>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid-2">
         <div className="card">
           <div className="card-header">
             <div className="card-title">Aktuelle Buchungen</div>
@@ -234,6 +263,7 @@ export default function Dashboard() {
             )}
           </div>
         </div>
+        <div /> {/* Platzhalter */}
       </div>
 
       {dunningModal && (
